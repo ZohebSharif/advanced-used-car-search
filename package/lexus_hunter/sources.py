@@ -215,15 +215,16 @@ class Browser:
         state = {
             "vins": response_vins,
             "previous": sorted(set(pre_vins)),
-            "mustChange": set(pre_vins) != set(response_vins),
+            "mustChange": not set(pre_vins).issubset(response_vins),
         }
         self.page.wait_for_function(
             """state => {
-                const visibleVins = [...document.querySelectorAll('a[href*="setVin"]')]
-                    .filter(link => link.offsetParent !== null)
-                    .map(link => (link.href.match(/[A-HJ-NPR-Z0-9]{17}/) || [])[0])
-                    .filter(Boolean)
-                    .sort();
+                const visibleVins = [...new Set(
+                    [...document.querySelectorAll('a[href*="setVin"]')]
+                        .filter(link => link.offsetParent !== null)
+                        .map(link => (link.href.match(/[A-HJ-NPR-Z0-9]{17}/) || [])[0])
+                        .filter(Boolean)
+                )].sort();
                 if (state.mustChange &&
                     visibleVins.join(',') === [...state.previous].sort().join(',')) {
                     return false;

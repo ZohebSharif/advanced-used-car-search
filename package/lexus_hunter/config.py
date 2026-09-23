@@ -99,8 +99,11 @@ def _validate(config: dict[str, Any]) -> None:
         raise ValueError("Invalid price limits")
     if config["run_duration_minutes"] < 0:
         raise ValueError("Run duration must be non-negative")
-    if config.get("search_radius_miles") is not None and config["search_radius_miles"] <= 0:
-        raise ValueError("Radius must be positive")
+    radius = config.get("search_radius_miles")
+    if radius is not None and (
+        not isinstance(radius, int) or isinstance(radius, bool) or not 10 <= radius <= 500
+    ):
+        raise ValueError("Radius must be an integer between 10 and 500 miles")
     if set(config["enabled_sources"]) - set(SOURCES):
         raise ValueError("Unknown source in enabled_sources")
     for key in ("model_max_calls_per_run", "model_max_input_chars", "model_max_output_tokens"):

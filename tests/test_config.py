@@ -28,3 +28,9 @@ def test_mutable_defaults_are_isolated_between_loads(tmp_path) -> None:
 def test_dealer_urls_reject_unsafe_shapes(url: str) -> None:
     with pytest.raises(ValueError):
         load(dealer_urls=[url])
+
+
+@pytest.mark.parametrize("radius", [1, 9, 501, 10.5, True])
+def test_search_radius_requires_supported_integer_range(radius) -> None:
+    with pytest.raises(ValueError, match="between 10 and 500"):
+        load(search_radius_miles=radius)

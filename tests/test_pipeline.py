@@ -165,6 +165,21 @@ def test_lexus_inventory_response_size_is_checked_before_body_read() -> None:
     assert response.text_called is False
 
 
+def test_lexus_inventory_response_checks_actual_body_size() -> None:
+    class ChunkedOversizedResponse:
+        def header_value(self, name):
+            assert name == "content-length"
+            return None
+
+        def text(self):
+            return "£" * 6
+
+    browser = object.__new__(Browser)
+    browser.max_response_bytes = 10
+    with pytest.raises(ValueError, match="response-size limit"):
+        browser._checked_response_text(ChunkedOversizedResponse())
+
+
 def test_dealer_discovery_requires_target_card_and_concrete_vehicle_identity() -> None:
     config = dict(CONFIG, dealer_urls=["https://dealer.example/used-inventory/"])
     html = """
