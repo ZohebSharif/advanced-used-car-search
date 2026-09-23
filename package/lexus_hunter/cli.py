@@ -15,7 +15,6 @@ from .extract import extract
 from .model import DeepSeekClient, ModelBudget
 from .rank import evaluate, validate_vin
 from .report import build, table, write
-from .security import is_vehicle_detail_url
 from .sources import ADAPTERS, POLICY_RESTRICTED, Browser
 from .store import Store
 from .tools import AgentTools
@@ -66,7 +65,7 @@ def run(args: argparse.Namespace, *, dry: bool = False, test: bool = False) -> d
     evidence_numbers: dict[str, int] = {}
 
     def ingest(html: str, url: str, source: str) -> None:
-        if source != "fixture" and not is_vehicle_detail_url(url):
+        if source != "fixture" and not ADAPTERS[source].is_detail(url):
             raise ValueError("candidate URL is not a concrete vehicle-detail URL")
         evidence_numbers[source] = evidence_numbers.get(source, 0) + 1
         evidence = tools.save_listing_evidence(source, evidence_numbers[source], html)

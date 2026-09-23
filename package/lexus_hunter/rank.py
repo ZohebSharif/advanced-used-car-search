@@ -18,7 +18,7 @@ def vin_check_digit(vin: str) -> bool:
     values = dict(
         zip(
             "ABCDEFGHJKLMNPRSTUVWXYZ",
-            [1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 7, 8, 9, 2, 3, 4, 5, 6, 7, 8, 9],
+            [1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 7, 9, 2, 3, 4, 5, 6, 7, 8, 9],
             strict=True,
         )
     )

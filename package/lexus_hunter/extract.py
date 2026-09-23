@@ -7,7 +7,7 @@ import json
 import re
 from datetime import UTC, datetime
 from typing import Any
-from urllib.parse import urljoin
+from urllib.parse import unquote, urljoin
 
 from bs4 import BeautifulSoup
 
@@ -152,7 +152,7 @@ def extract(
     title = soup.title.get_text(" ", strip=True) if soup.title else ""
     heading = soup.h1.get_text(" ", strip=True) if soup.h1 else ""
     identity = " ".join(
-        [title, heading, str(structured.get("name") or ""), str(structured.get("model") or "")]
+        [title, heading, str(structured.get("name") or ""), str(structured.get("model") or ""), text[:500]]
     )
 
     def field(pattern: str) -> str | None:
@@ -178,10 +178,16 @@ def extract(
     vin = _first(
         structured.get("vehicleIdentificationNumber"), field(r"\bVIN\s*[:#]?\s*([A-HJ-NPR-Z0-9]{17})\b")
     )
+    url_vin = VIN.search(unquote(url))
+    vin = _first(vin, url_vin.group(0) if url_vin else None)
     deterministic: dict[str, Any] = {
         "year": _int(_first(structured.get("vehicleModelDate"), match_year.group(1) if match_year else None)),
         "make": _first(
-            _brand(structured.get("brand")), "Lexus" if re.search(r"\bLexus\b", identity, re.I) else None
+            _brand(structured.get("brand")),
+            "Lexus"
+            if re.search(r"\bLexus\b", identity, re.I)
+            or (source == "lexus" and re.search(r"\bES\s*300\s*h\b", identity, re.I))
+            else None,
         ),
         "model": _first(
             structured.get("model"), "ES 300h" if re.search(r"\bES\s*300\s*h\b", identity, re.I) else None
@@ -226,6 +232,8 @@ def extract(
             provenance[key] = {"state": "structured_visible", "evidence": structured_fields[key]}
         else:
             provenance[key] = {"state": "visible_text", "evidence": str(value)[:180]}
+    if url_vin and deterministic["vin"] == url_vin.group(0):
+        provenance["vin"] = {"state": "url_identity", "evidence": url_vin.group(0)}
     provenance["title_evidence"] = {
         "state": "seller_claim" if title_state["state"] == "seller_clean_claim" else title_state["state"],
         "evidence": title_state["clean_claim"] or title_state["ambiguous"] or title_state["negated"] or None,

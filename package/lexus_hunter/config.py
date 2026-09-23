@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import os
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import yaml
 from dotenv import load_dotenv
@@ -75,13 +77,13 @@ def _environment_overrides() -> dict[str, Any]:
 
 def load(path: str | Path | None = None, **overrides: Any) -> dict[str, Any]:
     config_path = Path(path) if path else ROOT / "config.yaml"
-    config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-    if not isinstance(config, dict):
+    loaded = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    if not isinstance(loaded, dict):
         raise ValueError("Configuration must be a mapping")
+    config = deepcopy(DEFAULTS)
+    config.update(loaded)
     config.update(_environment_overrides())
     config.update({key: value for key, value in overrides.items() if value is not None})
-    for key, value in DEFAULTS.items():
-        config.setdefault(key, value)
     _validate(config)
     return config
 
@@ -110,3 +112,14 @@ def _validate(config: dict[str, Any]) -> None:
         raise ValueError("model_base_url must use HTTPS")
     if not isinstance(config.get("dealer_urls"), list):
         raise ValueError("dealer_urls must be a list")
+    for url in config["dealer_urls"]:
+        parsed = urlparse(str(url))
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.hostname
+            or parsed.username
+            or parsed.password
+            or port not in {80, 443}
+        ):
+            raise ValueError("dealer_urls must contain HTTP(S) URLs without credentials or custom ports")

@@ -76,6 +76,17 @@ A live run stops when enabled adapters finish; it does not idle until the full d
 
 Facebook Marketplace, Cars.com, Craigslist, generic search-engine discovery, and dealers without explicitly configured public URLs are policy-disabled. Public access restrictions, authentication requirements, CAPTCHA, HTTP 401/403/429, private/non-global addresses, unsafe ports, and disallowed redirects fail closed without bypass or retry loops.
 
+Lexus L/Certified discovery uses the public inventory UI: it selects ES Hybrid, the configured target year, and a bounded distance, then opens each visible `VIEW DETAILS` overlay. The scanner stores a candidate only after that detail overlay supplies model, price, and mileage evidence.
+
+To include a California dealer, add its public inventory search URL explicitly in `config.yaml`:
+
+```yaml
+dealer_urls:
+  - https://www.tustinlexus.com/used-vehicles/certified-pre-owned-vehicles/
+```
+
+Dealer search pages are treated only as discovery surfaces. A dealer candidate must have a concrete VIN-bearing or known vehicle-detail URL, and its detail page must visibly contain one vehicle's VIN, target model/year, price, and mileage. Login, CAPTCHA, lead forms, `CONTACT DEALER`, and transaction controls are never used.
+
 ## Local data and lifecycle
 
 - `hunter.sqlite3`: live runs, identities, observations, source events, and schema version.
@@ -93,7 +104,7 @@ Clean-title text is a seller/source claim, not verification. Negated language su
 ## Verification
 
 ```sh
-uv sync --frozen --extra dev
+uv sync --frozen --extra dev --reinstall-package lexus-hunter
 uv run python -m pytest -q
 uv run ruff check .
 uv run mypy package/lexus_hunter

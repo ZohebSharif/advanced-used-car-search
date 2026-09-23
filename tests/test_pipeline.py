@@ -28,6 +28,7 @@ def test_fixture_matching_and_exclusion() -> None:
 
 
 def test_vin_and_privacy() -> None:
+    assert vin_check_digit("58AEA1C16NU018844")
     assert not vin_check_digit("1" * 16 + "I")
     assert "[redacted phone]" in privacy("Call 408-555-1234")
     assert "[redacted email]" in privacy("Write x@example.com")
@@ -95,10 +96,7 @@ def test_source_does_not_retry_access_restriction() -> None:
 
 
 def test_source_page_budget_invalidates_partial_coverage() -> None:
-    search = (
-        '<a href="/vehicle/first">first</a>'
-        '<a href="/vehicle/second">second</a>'
-    )
+    search = '<a href="/vehicle/first">first</a><a href="/vehicle/second">second</a>'
     detail = "<html><body>2022 Lexus ES 300h</body></html>"
     browser = SequenceBrowser([search, detail])
     config = dict(CONFIG, request_delay_seconds=0, max_pages_per_source=2)
@@ -106,3 +104,121 @@ def test_source_page_budget_invalidates_partial_coverage() -> None:
     assert result.status == "failed"
     assert result.complete is False
     assert browser.calls == 2
+
+
+class LexusBrowser:
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    def visit(self, url, domains, timeout):
+        self.calls.append("search")
+        return "<html><body>Lexus inventory</body></html>"
+
+    def filter_lexus_inventory(self, *, year, radius, timeout):
+        self.calls.append(f"filter:{year}:{radius}")
+        return '<a href="?link[LcertSearchInventory][setVin]=58AD21B19NU012345">2022 ES 300h VIEW DETAILS</a>'
+
+    def open_lexus_detail(self, url, domains, timeout):
+        self.calls.append("detail")
+        return (
+            "<html><body><h1>2022 Lexus ES 300h</h1>"
+            "<p>$28,900 34,500 miles San Jose, CA 95112</p></body></html>"
+        )
+
+
+def test_lexus_adapter_filters_visible_inventory_and_reads_detail() -> None:
+    browser = LexusBrowser()
+    config = dict(CONFIG, home_zip="90001", request_delay_seconds=0, search_radius_miles=500)
+    result = ADAPTERS["lexus"].run(browser, config, time.monotonic() + 10)
+    assert result.status == "ok"
+    assert result.complete is True
+    assert len(result.listings) == 1
+    assert browser.calls == ["search", "filter:2022:200", "detail"]
+
+
+def test_lexus_adapter_deduplicates_detail_across_search_areas() -> None:
+    browser = LexusBrowser()
+    config = dict(
+        CONFIG,
+        home_zip="95112",
+        request_delay_seconds=0,
+        search_radius_miles=500,
+        max_pages_per_source=3,
+    )
+    result = ADAPTERS["lexus"].run(browser, config, time.monotonic() + 10)
+    assert result.status == "ok"
+    assert result.complete is True
+    assert len(result.listings) == 1
+    assert browser.calls == [
+        "search",
+        "filter:2022:500",
+        "detail",
+        "search",
+        "filter:2022:200",
+    ]
+
+
+def test_lexus_adapter_retries_same_vin_after_area_specific_rejection() -> None:
+    class RadiusRetryBrowser(LexusBrowser):
+        def __init__(self) -> None:
+            super().__init__()
+            self.detail_attempts = 0
+
+        def open_lexus_detail(self, url, domains, timeout):
+            self.calls.append("detail")
+            self.detail_attempts += 1
+            if self.detail_attempts == 1:
+                raise ValueError("Lexus detail overlay exceeded the applied search radius")
+            return (
+                "<html><body><h1>2022 Lexus ES 300h</h1>"
+                "<p>$28,900 34,500 miles Tustin, CA 92782</p></body></html>"
+            )
+
+    browser = RadiusRetryBrowser()
+    config = dict(
+        CONFIG,
+        home_zip="95112",
+        request_delay_seconds=0,
+        search_radius_miles=500,
+        max_pages_per_source=4,
+    )
+    result = ADAPTERS["lexus"].run(browser, config, time.monotonic() + 10)
+    assert len(result.listings) == 1
+    assert browser.detail_attempts == 2
+
+
+def test_dealer_discovery_requires_target_card_and_concrete_vehicle_identity() -> None:
+    config = dict(CONFIG, dealer_urls=["https://dealer.example/used-inventory/"])
+    html = """
+    <article>
+      <h2>2022 Lexus ES 300h Luxury</h2><p>$28,900 · 34,500 miles</p>
+      <a href="/inventory/used-2022-lexus-es-300h-58AD21B19NU012345/">View Details</a>
+    </article>
+    <article>
+      <h2>2022 Lexus ES 300h inventory</h2>
+      <a href="/used-inventory/?model=es-300h">More results</a>
+    </article>
+    """
+    links = ADAPTERS["dealers"].discover(html, config["dealer_urls"][0], config)
+    assert links == ["https://dealer.example/inventory/used-2022-lexus-es-300h-58AD21B19NU012345/"]
+    assert ADAPTERS["dealers"].is_detail(links[0])
+    assert not ADAPTERS["dealers"].is_detail("https://dealer.example/used-inventory/?model=es-300h")
+
+
+def test_dealer_detail_without_single_vehicle_evidence_is_rejected() -> None:
+    search = """
+    <article>
+      <h2>2022 Lexus ES 300h Luxury</h2>
+      <a href="/inventory/used-2022-lexus-es-300h-58AD21B19NU012345/">View Details</a>
+    </article>
+    """
+    browser = SequenceBrowser([search, "<html><body>2022 Lexus ES 300h inventory</body></html>"])
+    config = dict(
+        CONFIG,
+        dealer_urls=["https://dealer.example/used-inventory/"],
+        max_pages_per_source=2,
+        request_delay_seconds=0,
+    )
+    result = ADAPTERS["dealers"].run(browser, config, time.monotonic() + 10)
+    assert result.status == "failed"
+    assert result.listings == []

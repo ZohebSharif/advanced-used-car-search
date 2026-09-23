@@ -48,6 +48,25 @@ def test_clean_history_is_not_clean_title() -> None:
     assert evaluate(item, CONFIG, vin_status="missing")["category"] == "avoid"
 
 
+def test_lexus_overlay_text_provides_vehicle_identity() -> None:
+    html = """
+    <html><body>
+      DETAILS 2022 ES 300h LUXURY $40,995 30,837 MILES
+      Location 34.2 MILES AWAY Located at: Tustin Lexus, Tustin, CA 92782
+    </body></html>
+    """
+    item = extract(
+        html,
+        "https://www.lexus.com/lcertified/search-inventory"
+        "?link[LcertSearchInventory][setVin]=58AEA1C16NU018844",
+        "lexus",
+        CONFIG,
+        use_model=False,
+    )
+    assert (item["year"], item["make"], item["model"]) == (2022, "Lexus", "ES 300h")
+    assert (item["price"], item["mileage"], item["vin"]) == (40_995, 30_837, "58AEA1C16NU018844")
+
+
 class SuggestingClient:
     available = True
     model_name = "fake"
