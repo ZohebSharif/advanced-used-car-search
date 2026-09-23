@@ -65,6 +65,10 @@ def test_lexus_overlay_text_provides_vehicle_identity() -> None:
     )
     assert (item["year"], item["make"], item["model"]) == (2022, "Lexus", "ES 300h")
     assert (item["price"], item["mileage"], item["vin"]) == (40_995, 30_837, "58AEA1C16NU018844")
+    assert item["provenance"]["vin"] == {
+        "state": "url_identity",
+        "evidence": "58AEA1C16NU018844",
+    }
 
 
 class SuggestingClient:

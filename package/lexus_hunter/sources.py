@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 import time
 from dataclasses import dataclass, field
@@ -121,7 +122,8 @@ class Browser:
         if filter_button.get_attribute("aria-expanded") != "true":
             filter_button.click()
         self.page.get_by_role("tab", name="DISTANCE").click()
-        distance = next((value for value in (10, 25, 50, 150, 200, 500) if value >= radius), 500)
+        bounded_radius = min(radius, 500)
+        distance = next(value for value in (10, 25, 50, 150, 200, 500) if value >= bounded_radius)
         distance_input = self.page.locator(f'input[type="radio"][value="{distance}"]')
         if not distance_input.is_checked():
             self.page.locator("label").filter(has_text=re.compile(rf"^{distance} M")).click()
@@ -131,7 +133,7 @@ class Browser:
             timeout,
         )
         self._lexus_year = year
-        self._lexus_radius = distance
+        self._lexus_radius = bounded_radius
         return self._checked_html(self.page.content())
 
     def open_lexus_detail(self, url: str, allowed_domains: tuple[str, ...], timeout: int) -> str:
@@ -173,6 +175,15 @@ class Browser:
         expected_query: dict[str, str],
         timeout: int,
     ) -> None:
+        pre_vins = list(
+            self.page.locator('a[href*="setVin"]').evaluate_all(
+                """links => links
+                    .filter(link => link.offsetParent !== null)
+                    .map(link => (link.href.match(/[A-HJ-NPR-Z0-9]{17}/) || [])[0])
+                    .filter(Boolean)"""
+            )
+        )
+
         def matches_inventory_response(response: Any) -> bool:
             parsed = urlparse(response.url)
             if "/rest/lexus/inventorySearch/cpo" not in parsed.path:
@@ -187,18 +198,39 @@ class Browser:
             raise PermissionError(f"HTTP {response.status}: access restriction; no retry")
         if response.status >= 400:
             raise RuntimeError(f"HTTP {response.status}")
-        response_vins = sorted(set(VIN.findall(response.text())))
+        response_text = response.text()
+        try:
+            payload = json.loads(response_text)
+        except json.JSONDecodeError as exc:
+            raise ValueError("Lexus inventory response was not valid JSON") from exc
+        if not isinstance(payload, (dict, list)):
+            raise ValueError("Lexus inventory response had an invalid payload")
+
+        response_vins = sorted(set(VIN.findall(response_text)))
+        state = {
+            "vins": response_vins,
+            "previous": sorted(set(pre_vins)),
+            "mustChange": set(pre_vins) != set(response_vins),
+        }
         self.page.wait_for_function(
-            """vins => {
+            """state => {
                 const visibleVins = [...document.querySelectorAll('a[href*="setVin"]')]
+                    .filter(link => link.offsetParent !== null)
                     .map(link => (link.href.match(/[A-HJ-NPR-Z0-9]{17}/) || [])[0])
-                    .filter(Boolean);
-                if (vins.length === 0) {
-                    return document.body.innerText.includes('YOUR SEARCH YIELDED NO RESULTS');
+                    .filter(Boolean)
+                    .sort();
+                if (state.mustChange &&
+                    visibleVins.join(',') === [...state.previous].sort().join(',')) {
+                    return false;
                 }
-                return visibleVins.length > 0 && visibleVins.every(vin => vins.includes(vin));
+                if (state.vins.length === 0) {
+                    return visibleVins.length === 0 &&
+                        document.body.innerText.includes('YOUR SEARCH YIELDED NO RESULTS');
+                }
+                return visibleVins.length > 0 &&
+                    visibleVins.every(vin => state.vins.includes(vin));
             }""",
-            arg=response_vins,
+            arg=state,
             timeout=timeout,
         )
 
@@ -409,14 +441,7 @@ class TemplateAdapter(Adapter):
             "craigslist": ["https://sfbay.craigslist.org/search/cta?query=2022%20Lexus%20ES%20300h"],
         }
         if self.name == "lexus":
-            return list(
-                dict.fromkeys(
-                    (
-                        urls["lexus"][0],
-                        "https://www.lexus.com/lcertified/search-inventory?zip=90001",
-                    )
-                )
-            )
+            return urls["lexus"]
         if self.name == "dealers":
             return list(config.get("dealer_urls", []))
         if self.name == "search":
@@ -460,9 +485,8 @@ class LexusAdapter(TemplateAdapter):
         config: dict[str, Any],
     ) -> str:
         browser.visit(url, domains, timeout=timeout)
-        search_zip = parse_qs(urlparse(url).query).get("zip", [""])[0]
         configured_radius = int(config.get("search_radius_miles") or 500)
-        radius = min(configured_radius, 200 if search_zip == "90001" else 500)
+        radius = min(configured_radius, 500)
         return browser.filter_lexus_inventory(
             year=int(config["target_year"]),
             radius=radius,

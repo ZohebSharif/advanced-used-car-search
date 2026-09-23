@@ -128,63 +128,12 @@ class LexusBrowser:
 
 def test_lexus_adapter_filters_visible_inventory_and_reads_detail() -> None:
     browser = LexusBrowser()
-    config = dict(CONFIG, home_zip="90001", request_delay_seconds=0, search_radius_miles=500)
+    config = dict(CONFIG, home_zip="95112", request_delay_seconds=0, search_radius_miles=500)
     result = ADAPTERS["lexus"].run(browser, config, time.monotonic() + 10)
     assert result.status == "ok"
     assert result.complete is True
     assert len(result.listings) == 1
-    assert browser.calls == ["search", "filter:2022:200", "detail"]
-
-
-def test_lexus_adapter_deduplicates_detail_across_search_areas() -> None:
-    browser = LexusBrowser()
-    config = dict(
-        CONFIG,
-        home_zip="95112",
-        request_delay_seconds=0,
-        search_radius_miles=500,
-        max_pages_per_source=3,
-    )
-    result = ADAPTERS["lexus"].run(browser, config, time.monotonic() + 10)
-    assert result.status == "ok"
-    assert result.complete is True
-    assert len(result.listings) == 1
-    assert browser.calls == [
-        "search",
-        "filter:2022:500",
-        "detail",
-        "search",
-        "filter:2022:200",
-    ]
-
-
-def test_lexus_adapter_retries_same_vin_after_area_specific_rejection() -> None:
-    class RadiusRetryBrowser(LexusBrowser):
-        def __init__(self) -> None:
-            super().__init__()
-            self.detail_attempts = 0
-
-        def open_lexus_detail(self, url, domains, timeout):
-            self.calls.append("detail")
-            self.detail_attempts += 1
-            if self.detail_attempts == 1:
-                raise ValueError("Lexus detail overlay exceeded the applied search radius")
-            return (
-                "<html><body><h1>2022 Lexus ES 300h</h1>"
-                "<p>$28,900 34,500 miles Tustin, CA 92782</p></body></html>"
-            )
-
-    browser = RadiusRetryBrowser()
-    config = dict(
-        CONFIG,
-        home_zip="95112",
-        request_delay_seconds=0,
-        search_radius_miles=500,
-        max_pages_per_source=4,
-    )
-    result = ADAPTERS["lexus"].run(browser, config, time.monotonic() + 10)
-    assert len(result.listings) == 1
-    assert browser.detail_attempts == 2
+    assert browser.calls == ["search", "filter:2022:500", "detail"]
 
 
 def test_dealer_discovery_requires_target_card_and_concrete_vehicle_identity() -> None:
