@@ -155,6 +155,10 @@ class Browser:
         policy.validate(self.page.url)
         html = f"<html><body>{overlay.inner_html()}</body></html>"
         detail_text = BeautifulSoup(html, "html.parser").get_text(" ", strip=True)
+        self._validate_lexus_detail_text(detail_text)
+        return self._checked_html(html)
+
+    def _validate_lexus_detail_text(self, detail_text: str) -> None:
         if not (
             TARGET.search(detail_text)
             and str(self._lexus_year) in detail_text
@@ -163,11 +167,12 @@ class Browser:
         ):
             raise ValueError("Lexus detail overlay lacked year, model, price, or mileage evidence")
         distance = re.search(r"([\d,.]+)\s+MILES AWAY", detail_text, re.IGNORECASE)
-        if distance and self._lexus_radius is not None:
+        if self._lexus_radius is not None:
+            if distance is None:
+                raise ValueError("Lexus detail overlay lacked distance evidence")
             miles_away = float(distance.group(1).replace(",", ""))
             if miles_away > self._lexus_radius:
                 raise ValueError("Lexus detail overlay exceeded the applied search radius")
-        return self._checked_html(html)
 
     def _apply_lexus_filter(
         self,
@@ -198,7 +203,7 @@ class Browser:
             raise PermissionError(f"HTTP {response.status}: access restriction; no retry")
         if response.status >= 400:
             raise RuntimeError(f"HTTP {response.status}")
-        response_text = response.text()
+        response_text = self._checked_response_text(response)
         try:
             payload = json.loads(response_text)
         except json.JSONDecodeError as exc:
@@ -233,6 +238,19 @@ class Browser:
             arg=state,
             timeout=timeout,
         )
+
+    def _checked_response_text(self, response: Any) -> str:
+        declared_size = response.header_value("content-length")
+        try:
+            size = int(declared_size) if declared_size else None
+        except ValueError:
+            size = None
+        if size is not None and size > self.max_response_bytes:
+            raise ValueError("response exceeds configured response-size limit")
+        text = response.text()
+        if len(text.encode("utf-8")) > self.max_response_bytes:
+            raise ValueError("response exceeds configured response-size limit")
+        return text
 
     def _checked_html(self, html: str) -> str:
         if len(html.encode("utf-8")) > self.max_response_bytes:

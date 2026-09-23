@@ -3,10 +3,11 @@ from __future__ import annotations
 import time
 from datetime import UTC, datetime
 
+import pytest
 from lexus_hunter.config import ROOT, load
 from lexus_hunter.extract import extract, privacy
 from lexus_hunter.rank import evaluate, vin_check_digit
-from lexus_hunter.sources import ADAPTERS
+from lexus_hunter.sources import ADAPTERS, Browser
 from lexus_hunter.store import Store
 
 CONFIG = load()
@@ -134,6 +135,34 @@ def test_lexus_adapter_filters_visible_inventory_and_reads_detail() -> None:
     assert result.complete is True
     assert len(result.listings) == 1
     assert browser.calls == ["search", "filter:2022:500", "detail"]
+
+
+def test_lexus_detail_requires_distance_for_exact_radius_enforcement() -> None:
+    browser = object.__new__(Browser)
+    browser._lexus_year = 2022
+    browser._lexus_radius = 250
+    with pytest.raises(ValueError, match="lacked distance evidence"):
+        browser._validate_lexus_detail_text("2022 ES 300h $28,900 34,500 miles")
+
+
+def test_lexus_inventory_response_size_is_checked_before_body_read() -> None:
+    class OversizedResponse:
+        text_called = False
+
+        def header_value(self, name):
+            assert name == "content-length"
+            return "11"
+
+        def text(self):
+            self.text_called = True
+            return "x" * 11
+
+    browser = object.__new__(Browser)
+    browser.max_response_bytes = 10
+    response = OversizedResponse()
+    with pytest.raises(ValueError, match="response-size limit"):
+        browser._checked_response_text(response)
+    assert response.text_called is False
 
 
 def test_dealer_discovery_requires_target_card_and_concrete_vehicle_identity() -> None:
