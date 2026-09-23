@@ -38,6 +38,21 @@ _MODEL_ENV: dict[str, tuple[str, Any]] = {
     "MODEL_TIMEOUT_SECONDS": ("model_timeout_seconds", float),
 }
 
+DEFAULTS: dict[str, Any] = {
+    "model_enabled": False,
+    "model_base_url": "https://api.deepseek.com",
+    "model_name": "deepseek-flash",
+    "model_max_calls_per_run": 3,
+    "model_max_input_chars": 12_000,
+    "model_timeout_seconds": 20.0,
+    "model_max_output_tokens": 800,
+    "max_pages_per_source": 3,
+    "max_response_bytes": 4_000_000,
+    "request_delay_seconds": 1.5,
+    "stale_after_days": 30,
+    "dealer_urls": [],
+}
+
 
 def _bool(value: str) -> bool:
     normalized = value.strip().lower()
@@ -65,18 +80,8 @@ def load(path: str | Path | None = None, **overrides: Any) -> dict[str, Any]:
         raise ValueError("Configuration must be a mapping")
     config.update(_environment_overrides())
     config.update({key: value for key, value in overrides.items() if value is not None})
-    config.setdefault("model_enabled", False)
-    config.setdefault("model_base_url", "https://api.deepseek.com")
-    config.setdefault("model_name", "deepseek-flash")
-    config.setdefault("model_max_calls_per_run", 3)
-    config.setdefault("model_max_input_chars", 12_000)
-    config.setdefault("model_timeout_seconds", 20.0)
-    config.setdefault("model_max_output_tokens", 800)
-    config.setdefault("max_pages_per_source", 3)
-    config.setdefault("max_response_bytes", 4_000_000)
-    config.setdefault("request_delay_seconds", 1.5)
-    config.setdefault("stale_after_days", 30)
-    config.setdefault("dealer_urls", [])
+    for key, value in DEFAULTS.items():
+        config.setdefault(key, value)
     _validate(config)
     return config
 

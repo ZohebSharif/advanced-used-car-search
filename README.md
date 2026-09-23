@@ -9,7 +9,7 @@ Results are research leads. Seller/source title, history, CPO, and vehicle claim
 Requirements: macOS or Linux and [`uv`](https://docs.astral.sh/uv/). The project pins Python 3.13; `uv` can provision it.
 
 ```sh
-cd /Users/zoheb/Desktop/smithproj/carscraper/lexus-hunter
+cd lexus-hunter
 ./setup.sh
 uv run lexus-hunter doctor
 ```
@@ -93,7 +93,7 @@ Clean-title text is a seller/source claim, not verification. Negated language su
 ## Verification
 
 ```sh
-uv sync --extra dev --reinstall-package lexus-hunter
+uv sync --frozen --extra dev
 uv run python -m pytest -q
 uv run ruff check .
 uv run mypy package/lexus_hunter
