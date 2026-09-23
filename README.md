@@ -1,0 +1,102 @@
+# lexus-hunter
+
+Local, read-only research CLI for public California listings of the 2022 Lexus ES 300h. It extracts visible listing evidence, applies deterministic hard gates, ranks candidates, tracks price and relisting history, and writes local reports. It cannot log in, submit forms, contact sellers, place orders, make payments, or bypass access controls.
+
+Results are research leads. Seller/source title, history, CPO, and vehicle claims are not independently verified.
+
+## Setup
+
+Requirements: macOS or Linux and [`uv`](https://docs.astral.sh/uv/). The project pins Python 3.13; `uv` can provision it.
+
+```sh
+cd /Users/zoheb/Desktop/smithproj/carscraper/lexus-hunter
+./setup.sh
+uv run lexus-hunter doctor
+```
+
+`setup.sh` creates `.env` only when absent, installs the locked Python environment and Playwright Chromium, creates local output directories, and runs the deterministic fixture smoke test. Re-running it preserves an existing `.env`.
+
+## Optional DeepSeek model assistance
+
+Deterministic extraction and ranking are the default and require no API key. Optional model assistance uses DeepSeek's OpenAI-compatible JSON API only for bounded suggestions from visible page text.
+
+Edit `.env`:
+
+```dotenv
+DEEPSEEK_API_KEY=
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+DEEPSEEK_MODEL=deepseek-flash
+MODEL_ENABLED=false
+MODEL_MAX_CALLS_PER_RUN=3
+MODEL_MAX_INPUT_CHARS=12000
+MODEL_TIMEOUT_SECONDS=20
+```
+
+Set `MODEL_ENABLED=true` and provide `DEEPSEEK_API_KEY` to enable it. Environment variables override `config.yaml`. The API key is read only from the environment and is never written to logs, evidence, SQLite, or reports.
+
+The model is advisory. It cannot override deterministic year, make/model, URL, price, mileage, location, VIN, title, or history evidence. Invalid JSON, schema violations, timeouts, and provider errors are isolated; the deterministic pipeline continues. Every run reports the model name, enabled state, bounded call count, latency, input size, and call status.
+
+`doctor` does not make a model request. One explicit bounded connectivity check:
+
+```sh
+uv run lexus-hunter doctor --check-model
+```
+
+The real-provider pytest is opt-in and otherwise skipped:
+
+```sh
+RUN_DEEPSEEK_INTEGRATION=1 uv run python -m pytest -q -k real_deepseek_json_mode_opt_in
+```
+
+## Commands
+
+```sh
+# Deterministic offline fixture path; no network or model call
+uv run lexus-hunter dry-run
+
+# Optional bounded model-assisted fixture path
+uv run lexus-hunter dry-run --model
+
+# Short source diagnostic; does not age or stale stored live inventory
+uv run lexus-hunter test-sources --headless --duration-minutes 3
+
+# Bounded live read-only run
+uv run lexus-hunter run --headless --duration-minutes 45
+
+# Optional live constraints
+uv run lexus-hunter run --zip 95112 --radius 250 --max-price 30000 --state CA
+
+uv run lexus-hunter report
+uv run lexus-hunter listings
+uv run lexus-hunter sources
+uv run lexus-hunter doctor
+```
+
+A live run stops when enabled adapters finish; it does not idle until the full deadline. `test-sources` is deliberately diagnostic, not exhaustive. Status `empty` means a public search page loaded but no concrete vehicle-detail URL was identified; it is not proof that the source has no matching inventory. `blocked`, `failed`, `disabled`, and `deadline` are never reported as successful searches.
+
+Facebook Marketplace, Cars.com, Craigslist, generic search-engine discovery, and dealers without explicitly configured public URLs are policy-disabled. Public access restrictions, authentication requirements, CAPTCHA, HTTP 401/403/429, private/non-global addresses, unsafe ports, and disallowed redirects fail closed without bypass or retry loops.
+
+## Local data and lifecycle
+
+- `hunter.sqlite3`: live runs, identities, observations, source events, and schema version.
+- `fixtures.sqlite3`: isolated fixture runs.
+- `evidence/<run>/`: bounded HTML plus visible-text evidence.
+- `logs/live-run-*.jsonl` and `logs/fixture-run-*.jsonl`: structured local run events.
+- `reports/latest.{json,md}`: latest real live run.
+- `reports/diagnostic/latest.{json,md}`: latest source diagnostic.
+- `reports/fixtures/latest.{json,md}`: latest fixture dry run.
+
+Identity preference: VIN, then canonical detail URL, then a conservative seller/vehicle fallback. A listing records `first_seen`, `last_seen`, `last_seen_run`, `missing_runs`, `reappeared_at`, `relisted_count`, and `stale`. Only a completed authoritative live source scan may increment missing inventory. Blocked, disabled, failed, deadline, empty, and diagnostic source tests do not age listings. Reappearance resets `missing_runs` and records a relisting event while preserving price observations.
+
+Clean-title text is a seller/source claim, not verification. Negated language such as “no salvage title,” “not rebuilt,” and “no major accident” is kept separate from affirmative adverse evidence. Missing or unavailable VIN validation remains a manual-verification flag; invalid or mismatched VIN evidence is a hard exclusion.
+
+## Verification
+
+```sh
+uv sync --extra dev --reinstall-package lexus-hunter
+uv run python -m pytest -q
+uv run ruff check .
+uv run mypy package/lexus_hunter
+```
+
+The offline suite covers extraction, negation-aware title evidence, deterministic hard gates, model JSON validation and call caps, SSRF controls, pre-request non-public DNS rejection, detail-URL filtering, deduplication, price history, schema migration, relisting/stale transitions, diagnostic-run isolation, and report provenance. The direct HTTP tool additionally validates the connected response peer; Playwright cannot independently verify Chromium's connected peer after its pre-request DNS check. The DeepSeek network test remains opt-in so ordinary tests never consume API quota.

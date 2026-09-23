@@ -1,0 +1,107 @@
+from __future__ import annotations
+
+from types import SimpleNamespace
+
+import lexus_hunter.sources as source_module
+import pytest
+from lexus_hunter.security import UnsafeUrlError, URLPolicy, canonical_url
+from lexus_hunter.sources import Browser
+
+
+def resolver_for(address: str):
+    return lambda _host, _port: [address]
+
+
+def test_url_policy_allows_only_public_allowlisted_http() -> None:
+    policy = URLPolicy(("example.com",), resolver=resolver_for("93.184.216.34"))
+    assert (
+        policy.validate("https://www.example.com/car/1/?utm_source=x#photos")
+        == "https://www.example.com/car/1/?utm_source=x"
+    )
+    with pytest.raises(UnsafeUrlError):
+        policy.validate("https://evil.example.net/car/1")
+    with pytest.raises(UnsafeUrlError):
+        policy.validate("file:///etc/passwd")
+    with pytest.raises(UnsafeUrlError):
+        policy.validate("https://user:pass@example.com/car/1")
+    with pytest.raises(UnsafeUrlError):
+        policy.validate("https://example.com:8443/car/1")
+
+
+@pytest.mark.parametrize("address", ["127.0.0.1", "169.254.169.254", "10.0.0.2", "::1"])
+def test_url_policy_rejects_non_global_resolution(address: str) -> None:
+    with pytest.raises(UnsafeUrlError):
+        URLPolicy(("example.com",), resolver=resolver_for(address)).validate("https://example.com/car/1")
+
+
+class FakeRoute:
+    def __init__(self, url: str, frame: object, navigation: bool = False):
+        self.request = SimpleNamespace(
+            url=url,
+            frame=frame,
+            is_navigation_request=lambda: navigation,
+        )
+        self.action: str | None = None
+
+    def abort(self) -> None:
+        self.action = "abort"
+
+    def continue_(self) -> None:
+        self.action = "continue"
+
+
+def bare_browser() -> Browser:
+    browser = object.__new__(Browser)
+    browser.page = SimpleNamespace(main_frame=object())
+    browser._active_policy = None
+    return browser
+
+
+def test_browser_route_rejects_private_subresource(monkeypatch) -> None:
+    monkeypatch.setattr(
+        source_module,
+        "URLPolicy",
+        lambda domains: URLPolicy(domains, resolver=resolver_for("127.0.0.1")),
+    )
+    route = FakeRoute("http://metadata.example/latest", object())
+    bare_browser()._route(route)
+    assert route.action == "abort"
+
+
+def test_browser_route_rechecks_dns_on_every_request(monkeypatch) -> None:
+    addresses = iter(("93.184.216.34", "127.0.0.1"))
+
+    def changing_resolver(_host: str, _port: int):
+        return [next(addresses)]
+
+    monkeypatch.setattr(
+        source_module,
+        "URLPolicy",
+        lambda domains: URLPolicy(domains, resolver=changing_resolver),
+    )
+    browser = bare_browser()
+    first = FakeRoute("https://assets.example/image.jpg", object())
+    second = FakeRoute("https://assets.example/data.json", object())
+    browser._route(first)
+    browser._route(second)
+    assert first.action == "continue"
+    assert second.action == "abort"
+
+
+def test_browser_route_rejects_public_non_allowlisted_subresource(monkeypatch) -> None:
+    public = resolver_for("93.184.216.34")
+    monkeypatch.setattr(
+        source_module,
+        "URLPolicy",
+        lambda domains: URLPolicy(domains, resolver=public),
+    )
+    browser = bare_browser()
+    browser._active_policy = URLPolicy(("example.com",), resolver=public)
+    route = FakeRoute("https://tracker.example.net/pixel", object())
+    browser._route(route)
+    assert route.action == "abort"
+
+
+def test_canonical_url_removes_tracking_but_preserves_identity_query() -> None:
+    url = "https://EXAMPLE.com/car/1?listingId=42&utm_campaign=x#photos"
+    assert canonical_url(url) == "https://example.com/car/1?listingId=42"
