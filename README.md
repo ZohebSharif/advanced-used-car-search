@@ -106,12 +106,13 @@ Clean-title text is a seller/source claim, not verification. Negated language su
 
 ## Local quality gates
 
-Run the same deterministic checks used by CI:
+Run the local quality and dependency gates:
 
 ```sh
 uv sync --locked --extra dev
 uv lock --check
 uv pip check
+uv run pip-audit
 uv run python -c 'import lexus_hunter.config; print(lexus_hunter.config.__file__); print(lexus_hunter.config.DEFAULTS["max_response_bytes"])'
 uv run lexus-hunter dry-run
 uv run python -m pytest -q
@@ -123,24 +124,30 @@ bash -n setup.sh
 The editable-package check must print a path under `package/lexus_hunter/` followed by
 `4000000`. `uv lock --check` verifies that `uv.lock` matches the project metadata, and
 `uv pip check` verifies that the installed environment has compatible dependencies.
-Neither command needs credentials or contacts listing sites.
+These are integrity checks, not vulnerability checks. `uv run pip-audit` audits the
+installed locked environment for known vulnerabilities using public advisory data.
+It may query the PyPI JSON API, requires no credentials or secrets, and never accesses
+listing or dealer sites.
 
 ## Continuous integration
 
-`.github/workflows/ci.yml` runs one bounded `Offline quality gates` job for pull requests
+`.github/workflows/ci.yml` runs one bounded `Quality and dependency audit` job for pull requests
 and pushes to `main`. Superseded runs on the same ref are cancelled. The workflow grants
 the GitHub token only `contents: read`, disables persisted checkout credentials, pins
 third-party actions and the uv/Python toolchain, and caches packages using `uv.lock`.
 
-CI sets `MODEL_ENABLED=false` and runs only the deterministic fixture command
+CI sets `MODEL_ENABLED=false` and runs only the deterministic fixture scanner command
 `uv run lexus-hunter dry-run`; it never runs `lexus-hunter run`, `test-sources`, or
 `setup.sh`. It does not load `.env`, use API keys, install a browser, or access live
-marketplace/dealer pages. The only uploaded artifacts are the generated fixture
-`latest.md` and `latest.json` reports, retained for seven days. Local SQLite databases,
-logs, HTML/text evidence, `.env`, and all live or diagnostic reports are excluded.
+marketplace/dealer pages. The advisory audit may query the public PyPI vulnerability
+service, but it uses no credentials and sends no listing or user data.
+
+The only uploaded artifacts are the generated fixture `latest.md` and `latest.json`
+reports, retained for seven days. Local SQLite databases, logs, HTML/text evidence,
+`.env`, and all live or diagnostic reports are excluded.
 
 The test suite validates these workflow boundaries, including triggers, permissions,
-action pinning, required commands, prohibited live commands, and the fixture-only
-artifact allowlist.
+action pinning, the locked advisory-audit dependency, required commands, prohibited
+live commands, and the fixture-only artifact allowlist.
 
 The offline suite covers extraction, negation-aware title evidence, deterministic hard gates, model JSON validation and call caps, SSRF controls, pre-request non-public DNS rejection, detail-URL filtering, deduplication, price history, schema migration, relisting/stale transitions, diagnostic-run isolation, and report provenance. The direct HTTP tool additionally validates the connected response peer; Playwright cannot independently verify Chromium's connected peer after its pre-request DNS check. The DeepSeek network test remains opt-in so ordinary tests never consume API quota.

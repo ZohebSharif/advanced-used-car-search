@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import tomllib
 from pathlib import Path
 
 import yaml
@@ -26,6 +27,7 @@ def test_ci_has_bounded_triggers_permissions_and_concurrency() -> None:
     assert workflow["env"]["MODEL_ENABLED"] == "false"
     assert set(workflow["jobs"]) == {"quality"}
     assert workflow["jobs"]["quality"]["timeout-minutes"] == "15"
+    assert workflow["jobs"]["quality"]["name"] == "Quality and dependency audit"
 
 
 def test_ci_runs_only_offline_scanner_and_required_quality_gates() -> None:
@@ -48,12 +50,21 @@ def test_ci_runs_only_offline_scanner_and_required_quality_gates() -> None:
     assert "bash -n setup.sh" in commands
     assert "uv lock --check" in commands
     assert "uv pip check" in commands
+    assert "uv run pip-audit" in commands
 
     assert not re.search(r"\buv run lexus-hunter (?:run|test-sources)\b", commands)
     assert "./setup.sh" not in commands
     assert "${{ secrets." not in text
     assert "DEEPSEEK_API_KEY" not in text
 
+
+def test_advisory_audit_is_a_locked_development_dependency() -> None:
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text())
+    development_dependencies = project["project"]["optional-dependencies"]["dev"]
+    lock = tomllib.loads((ROOT / "uv.lock").read_text())
+
+    assert "pip-audit>=2.10,<3" in development_dependencies
+    assert any(package["name"] == "pip-audit" for package in lock["package"])
 
 def test_ci_pins_actions_and_uploads_only_fixture_reports() -> None:
     workflow, _ = load_workflow()
