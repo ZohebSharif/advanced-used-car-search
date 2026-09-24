@@ -140,7 +140,7 @@ def run(args: argparse.Namespace, *, dry: bool = False, test: bool = False) -> d
                         max_response_bytes=int(config["max_response_bytes"]),
                     )
                     tools.browser = browser
-                result = ADAPTERS[source].run(browser, config, deadline)
+                result = ADAPTERS[source].run(None if disabled else browser, config, deadline)
                 source_complete = result.complete
                 try:
                     for search_url, search_html in result.search_pages:

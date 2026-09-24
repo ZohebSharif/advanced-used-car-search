@@ -157,6 +157,52 @@ def test_source_diagnostic_keeps_trailing_policy_sources_disabled(
     assert "searches=0; retries=0; parsed=0; complete=False" in events["cars"]["detail"]
 
 
+def test_source_diagnostic_passes_no_browser_to_trailing_disabled_source(
+    tmp_path, monkeypatch
+) -> None:
+    created_browsers = []
+    cars_adapter = cli.ADAPTERS["cars"]
+    received_browser = object()
+
+    class TrackingBrowser(FakeBrowser):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            created_browsers.append(self)
+
+    class RecordingAdapter:
+        def run(self, browser, config, deadline):
+            nonlocal received_browser
+            received_browser = browser
+            return cars_adapter.run(browser, config, deadline)
+
+    config = load(
+        enabled_sources=["autotrader", "cars"],
+        run_duration_minutes=0.01,
+        request_delay_seconds=0,
+        model_enabled=False,
+    )
+    monkeypatch.setattr(cli, "ROOT", tmp_path)
+    monkeypatch.setattr(cli, "load", lambda *args, **kwargs: config)
+    monkeypatch.setattr(
+        cli,
+        "ADAPTERS",
+        {"autotrader": EmptyAdapter(), "cars": RecordingAdapter()},
+    )
+    monkeypatch.setattr(cli, "Browser", TrackingBrowser)
+    report = cli.run(
+        Namespace(config=tmp_path / "config.yaml", headless=True, duration_minutes=0.01),
+        test=True,
+    )
+
+    database = Store(tmp_path / "diagnostic.sqlite3")
+    events = {event["source"]: event for event in database.events(report["run_id"])}
+    database.close()
+    assert len(created_browsers) == 1
+    assert received_browser is None
+    assert events["cars"]["status"] == "disabled"
+    assert "searches=0; retries=0; parsed=0; complete=False" in events["cars"]["detail"]
+
+
 def test_fixture_run_writes_only_fixture_report(tmp_path, monkeypatch) -> None:
     config = load(request_delay_seconds=0, model_enabled=False)
     monkeypatch.setattr(cli, "ROOT", tmp_path)
