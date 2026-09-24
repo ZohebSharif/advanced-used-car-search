@@ -137,19 +137,19 @@ def test_lexus_adapter_filters_visible_inventory_and_reads_detail() -> None:
     assert browser.calls == ["search", "filter:2022:250", "detail"]
 
 
-@pytest.mark.parametrize(("requested", "selected"), [(250, 500), (750, 500)])
+@pytest.mark.parametrize(("requested", "selected"), [(250, 500), (501, 500)])
 def test_lexus_ui_radius_uses_ceiling_capped_at_500(requested: int, selected: int) -> None:
     assert _lexus_ui_radius(requested) == selected
 
 
 def test_lexus_reports_incomplete_coverage_above_500_miles() -> None:
     browser = LexusBrowser()
-    config = dict(CONFIG, request_delay_seconds=0, search_radius_miles=750)
+    config = dict(CONFIG, request_delay_seconds=0, search_radius_miles=501)
     result = ADAPTERS["lexus"].run(browser, config, time.monotonic() + 10)
     assert result.status == "ok"
     assert result.complete is False
-    assert "capped at 500 miles for requested 750 miles; coverage incomplete" in result.detail
-    assert browser.calls == ["search", "filter:2022:750", "detail"]
+    assert "capped at 500 miles for requested 501 miles; coverage incomplete" in result.detail
+    assert browser.calls == ["search", "filter:2022:501", "detail"]
 
 
 def test_lexus_detail_requires_distance_for_exact_radius_enforcement() -> None:

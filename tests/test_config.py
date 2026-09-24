@@ -36,6 +36,6 @@ def test_search_radius_requires_positive_integer(radius) -> None:
         load(search_radius_miles=radius)
 
 
-@pytest.mark.parametrize("radius", [250, 750])
+@pytest.mark.parametrize("radius", [250, 501])
 def test_search_radius_allows_non_lexus_distances(radius: int) -> None:
     assert load(search_radius_miles=radius)["search_radius_miles"] == radius

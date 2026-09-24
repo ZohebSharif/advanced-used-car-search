@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 
 import pytest
-
 from lexus_hunter.config import load
 from lexus_hunter.model import DeepSeekClient
 from lexus_hunter.report import build, write
