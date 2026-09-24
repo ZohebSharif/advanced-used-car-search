@@ -76,7 +76,7 @@ A live run stops when enabled adapters finish; it does not idle until the full d
 
 Facebook Marketplace, Cars.com, Craigslist, generic search-engine discovery, and dealers without explicitly configured public URLs are policy-disabled. Public access restrictions, authentication requirements, CAPTCHA, HTTP 401/403/429, private/non-global addresses, unsafe ports, and disallowed redirects fail closed without bypass or retry loops.
 
-Lexus L/Certified discovery uses the public inventory UI: it selects ES Hybrid, the configured target year, and a bounded distance, then opens each visible `VIEW DETAILS` overlay. The scanner stores a candidate only after that detail overlay supplies model, price, and mileage evidence.
+Lexus L/Certified discovery uses the public inventory UI: it selects ES Hybrid, the configured target year, and the smallest supported distance that covers the requested radius, then opens each visible `VIEW DETAILS` overlay. The original requested radius remains the acceptance boundary: every accepted overlay must visibly report `MILES AWAY` at or below it. Lexus supports at most 500 miles; requests above 500 are searched at 500 and explicitly reported as incomplete coverage. The scanner stores a candidate only after that detail overlay supplies model, price, and mileage evidence.
 
 To include a California dealer, add its public inventory search URL explicitly in `config.yaml`:
 

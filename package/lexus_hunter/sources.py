@@ -42,6 +42,12 @@ TARGET = re.compile(r"\bES\s*300\s*h\b", re.IGNORECASE)
 VIN = re.compile(r"\b[A-HJ-NPR-Z0-9]{17}\b", re.IGNORECASE)
 PRICE = re.compile(r"\$\s*\d[\d,]*")
 MILEAGE = re.compile(r"\b\d[\d,]*\s+(?:miles?|mi)\b", re.IGNORECASE)
+LEXUS_UI_RADII = (10, 25, 50, 150, 200, 500)
+
+
+def _lexus_ui_radius(requested_radius: int) -> int:
+    capped_radius = min(requested_radius, LEXUS_UI_RADII[-1])
+    return next(radius for radius in LEXUS_UI_RADII if radius >= capped_radius)
 
 
 @dataclass
@@ -122,8 +128,7 @@ class Browser:
         if filter_button.get_attribute("aria-expanded") != "true":
             filter_button.click()
         self.page.get_by_role("tab", name="DISTANCE").click()
-        bounded_radius = min(radius, 500)
-        distance = next(value for value in (10, 25, 50, 150, 200, 500) if value >= bounded_radius)
+        distance = _lexus_ui_radius(radius)
         distance_input = self.page.locator(f'input[type="radio"][value="{distance}"]')
         if not distance_input.is_checked():
             self.page.locator("label").filter(has_text=re.compile(rf"^{distance} M")).click()
@@ -133,7 +138,7 @@ class Browser:
             timeout,
         )
         self._lexus_year = year
-        self._lexus_radius = bounded_radius
+        self._lexus_radius = radius
         return self._checked_html(self.page.content())
 
     def open_lexus_detail(self, url: str, allowed_domains: tuple[str, ...], timeout: int) -> str:
@@ -472,6 +477,22 @@ class LexusAdapter(TemplateAdapter):
     def __init__(self) -> None:
         super().__init__("lexus")
 
+    def run(
+        self,
+        browser: Browser | None,
+        config: dict[str, Any],
+        deadline: float,
+    ) -> Result:
+        result = super().run(browser, config, deadline)
+        requested_radius = int(config.get("search_radius_miles") or 500)
+        if requested_radius > LEXUS_UI_RADII[-1]:
+            result.complete = False
+            result.detail += (
+                f"; Lexus UI radius capped at {LEXUS_UI_RADII[-1]} miles for requested "
+                f"{requested_radius} miles; coverage incomplete"
+            )
+        return result
+
     def discover(self, html: str, base: str, config: dict[str, Any] | None = None) -> list[str]:
         links: list[str] = []
         year = str((config or {}).get("target_year", 2022))
@@ -505,10 +526,9 @@ class LexusAdapter(TemplateAdapter):
     ) -> str:
         browser.visit(url, domains, timeout=timeout)
         configured_radius = int(config.get("search_radius_miles") or 500)
-        radius = min(configured_radius, 500)
         return browser.filter_lexus_inventory(
             year=int(config["target_year"]),
-            radius=radius,
+            radius=configured_radius,
             timeout=timeout,
         )
 

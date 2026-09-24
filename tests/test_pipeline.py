@@ -7,7 +7,7 @@ import pytest
 from lexus_hunter.config import ROOT, load
 from lexus_hunter.extract import extract, privacy
 from lexus_hunter.rank import evaluate, vin_check_digit
-from lexus_hunter.sources import ADAPTERS, Browser
+from lexus_hunter.sources import ADAPTERS, Browser, _lexus_ui_radius
 from lexus_hunter.store import Store
 
 CONFIG = load()
@@ -129,12 +129,27 @@ class LexusBrowser:
 
 def test_lexus_adapter_filters_visible_inventory_and_reads_detail() -> None:
     browser = LexusBrowser()
-    config = dict(CONFIG, home_zip="95112", request_delay_seconds=0, search_radius_miles=500)
+    config = dict(CONFIG, home_zip="95112", request_delay_seconds=0, search_radius_miles=250)
     result = ADAPTERS["lexus"].run(browser, config, time.monotonic() + 10)
     assert result.status == "ok"
     assert result.complete is True
     assert len(result.listings) == 1
-    assert browser.calls == ["search", "filter:2022:500", "detail"]
+    assert browser.calls == ["search", "filter:2022:250", "detail"]
+
+
+@pytest.mark.parametrize(("requested", "selected"), [(250, 500), (750, 500)])
+def test_lexus_ui_radius_uses_ceiling_capped_at_500(requested: int, selected: int) -> None:
+    assert _lexus_ui_radius(requested) == selected
+
+
+def test_lexus_reports_incomplete_coverage_above_500_miles() -> None:
+    browser = LexusBrowser()
+    config = dict(CONFIG, request_delay_seconds=0, search_radius_miles=750)
+    result = ADAPTERS["lexus"].run(browser, config, time.monotonic() + 10)
+    assert result.status == "ok"
+    assert result.complete is False
+    assert "capped at 500 miles for requested 750 miles; coverage incomplete" in result.detail
+    assert browser.calls == ["search", "filter:2022:750", "detail"]
 
 
 def test_lexus_detail_requires_distance_for_exact_radius_enforcement() -> None:
@@ -143,6 +158,8 @@ def test_lexus_detail_requires_distance_for_exact_radius_enforcement() -> None:
     browser._lexus_radius = 250
     with pytest.raises(ValueError, match="lacked distance evidence"):
         browser._validate_lexus_detail_text("2022 ES 300h $28,900 34,500 miles")
+    with pytest.raises(ValueError, match="exceeded the applied search radius"):
+        browser._validate_lexus_detail_text("2022 ES 300h $28,900 34,500 miles Location 251 MILES AWAY")
 
 
 def test_lexus_inventory_response_size_is_checked_before_body_read() -> None:

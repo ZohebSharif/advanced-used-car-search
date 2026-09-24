@@ -30,7 +30,12 @@ def test_dealer_urls_reject_unsafe_shapes(url: str) -> None:
         load(dealer_urls=[url])
 
 
-@pytest.mark.parametrize("radius", [1, 9, 501, 10.5, True])
-def test_search_radius_requires_supported_integer_range(radius) -> None:
-    with pytest.raises(ValueError, match="between 10 and 500"):
+@pytest.mark.parametrize("radius", [0, -1, 10.5, True])
+def test_search_radius_requires_positive_integer(radius) -> None:
+    with pytest.raises(ValueError, match="positive integer"):
         load(search_radius_miles=radius)
+
+
+@pytest.mark.parametrize("radius", [250, 750])
+def test_search_radius_allows_non_lexus_distances(radius: int) -> None:
+    assert load(search_radius_miles=radius)["search_radius_miles"] == radius
