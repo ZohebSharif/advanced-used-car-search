@@ -78,36 +78,83 @@ def listing():
     }
 
 
-def test_source_diagnostic_does_not_age_inventory(tmp_path, monkeypatch) -> None:
+def test_source_diagnostic_does_not_mutate_live_inventory(tmp_path, monkeypatch) -> None:
     database = Store(tmp_path / "hunter.sqlite3")
     first_run = database.start(datetime.now(UTC).isoformat())
     database.save(listing(), first_run)
+    before = tuple(
+        database.db.execute(
+            "SELECT observed,last_seen,last_seen_run,missing_runs,stale FROM listings"
+        ).fetchone()
+    )
     database.close()
 
     config = load(
-        enabled_sources=["autotrader"],
+        enabled_sources=["lexus"],
         run_duration_minutes=0.01,
         request_delay_seconds=0,
         model_enabled=False,
     )
     monkeypatch.setattr(cli, "ROOT", tmp_path)
     monkeypatch.setattr(cli, "load", lambda *args, **kwargs: config)
-    monkeypatch.setattr(cli, "ADAPTERS", {"autotrader": EmptyAdapter()})
+    monkeypatch.setattr(cli, "ADAPTERS", {"lexus": LexusCandidateAdapter()})
     monkeypatch.setattr(cli, "Browser", FakeBrowser)
+    monkeypatch.setattr(cli, "validate_vin", lambda vin, remote, year: "verified")
     arguments = Namespace(
         config=tmp_path / "config.yaml",
         headless=True,
         duration_minutes=0.01,
     )
     report = cli.run(arguments, test=True)
-    assert report["sources_searched"] == ["autotrader"]
+    assert report["sources_searched"] == ["lexus"]
     assert report["mode"] == "source diagnostic"
     assert (tmp_path / "reports/diagnostic/latest.json").exists()
     assert not (tmp_path / "reports/latest.json").exists()
 
     database = Store(tmp_path / "hunter.sqlite3")
-    assert database.listings()[0]["missing_runs"] == 0
+    after = tuple(
+        database.db.execute(
+            "SELECT observed,last_seen,last_seen_run,missing_runs,stale FROM listings"
+        ).fetchone()
+    )
     database.close()
+    assert after == before
+    diagnostic = Store(tmp_path / "diagnostic.sqlite3")
+    assert len(diagnostic.listings()) == 1
+    diagnostic.close()
+    assert (tmp_path / "evidence/diagnostic/1/lexus-1.html").exists()
+
+
+def test_source_diagnostic_keeps_trailing_policy_sources_disabled(
+    tmp_path, monkeypatch
+) -> None:
+    cars_adapter = cli.ADAPTERS["cars"]
+    config = load(
+        enabled_sources=["autotrader", "cars"],
+        run_duration_minutes=0,
+        request_delay_seconds=0,
+        model_enabled=False,
+    )
+    monkeypatch.setattr(cli, "ROOT", tmp_path)
+    monkeypatch.setattr(cli, "load", lambda *args, **kwargs: config)
+    monkeypatch.setattr(
+        cli,
+        "ADAPTERS",
+        {"autotrader": EmptyAdapter(), "cars": cars_adapter},
+    )
+    monkeypatch.setattr(cli, "Browser", FakeBrowser)
+    report = cli.run(
+        Namespace(config=tmp_path / "config.yaml", headless=True, duration_minutes=0),
+        test=True,
+    )
+
+    database = Store(tmp_path / "diagnostic.sqlite3")
+    events = {event["source"]: event for event in database.events(report["run_id"])}
+    database.close()
+    assert events["autotrader"]["status"] == "deadline"
+    assert events["cars"]["status"] == "disabled"
+    assert "automated collection is disabled by default" in events["cars"]["detail"]
+    assert "searches=0; retries=0; parsed=0; complete=False" in events["cars"]["detail"]
 
 
 def test_fixture_run_writes_only_fixture_report(tmp_path, monkeypatch) -> None:

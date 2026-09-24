@@ -89,10 +89,11 @@ Dealer search pages are treated only as discovery surfaces. A dealer candidate m
 
 ## Local data and lifecycle
 
-- `hunter.sqlite3`: live runs, identities, observations, source events, and schema version.
+- `hunter.sqlite3`: authoritative live runs, identities, observations, source events, and schema version.
+- `diagnostic.sqlite3`: isolated source-diagnostic runs that cannot alter live inventory lifecycle state.
 - `fixtures.sqlite3`: isolated fixture runs.
-- `evidence/<run>/`: bounded HTML plus visible-text evidence.
-- `logs/live-run-*.jsonl` and `logs/fixture-run-*.jsonl`: structured local run events.
+- `evidence/<run>/`, `evidence/diagnostic/<run>/`, and `evidence/fixtures/<run>/`: bounded HTML plus visible-text evidence.
+- `logs/live-run-*.jsonl`, `logs/diagnostic-run-*.jsonl`, and `logs/fixture-run-*.jsonl`: structured local run events.
 - `reports/latest.{json,md}`: latest real live run.
 - `reports/diagnostic/latest.{json,md}`: latest source diagnostic.
 - `reports/fixtures/latest.{json,md}`: latest fixture dry run.

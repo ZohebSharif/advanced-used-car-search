@@ -46,12 +46,16 @@ def run(args: argparse.Namespace, *, dry: bool = False, test: bool = False) -> d
         0 if dry else (min(config["run_duration_minutes"], 3) if test else config["run_duration_minutes"])
     )
     deadline = start + duration * 60
-    database_path = ROOT / ("fixtures.sqlite3" if dry else "hunter.sqlite3")
+    database_path = ROOT / (
+        "fixtures.sqlite3" if dry else "diagnostic.sqlite3" if test else "hunter.sqlite3"
+    )
     db = Store(database_path)
     run_id = db.start(started)
-    mode = "fixture" if dry else "live"
+    mode = "fixture" if dry else "diagnostic" if test else "live"
     logpath = ROOT / "logs" / f"{mode}-run-{run_id}.jsonl"
-    evidence_dir = ROOT / "evidence" / (f"fixtures/{run_id}" if dry else str(run_id))
+    evidence_dir = ROOT / "evidence" / (
+        f"fixtures/{run_id}" if dry else f"diagnostic/{run_id}" if test else str(run_id)
+    )
     counts = {"discovered": 0, "deduplicated": 0, "excluded": 0, "ranked": 0}
     changes: dict[str, list[dict[str, Any]]] = {"new": [], "drops": [], "relisted": [], "stale": []}
     current: dict[str, dict[str, Any]] = {}
@@ -121,12 +125,15 @@ def run(args: argparse.Namespace, *, dry: bool = False, test: bool = False) -> d
             authoritative_sources.add("fixture")
         else:
             for source in config["enabled_sources"]:
-                if time.monotonic() >= deadline:
-                    db.event(run_id, source, "deadline", "time limit reached", now())
-                    continue
                 disabled = source in POLICY_RESTRICTED and (
                     source != "dealers" or not config.get("dealer_urls")
                 )
+                if not disabled and time.monotonic() >= deadline:
+                    detail = "time limit reached"
+                    db.event(run_id, source, "deadline", detail, now())
+                    if test:
+                        print(f"{source}: deadline — {detail}")
+                    continue
                 if not disabled and browser is None:
                     browser = Browser(
                         headless=getattr(args, "headless", False),
