@@ -8,7 +8,7 @@ allow_fallback_years: false
 preferred_exterior_colors: [black, caviar, obsidian]
 preferred_interior_colors: [palomino]
 max_mileage: 60000
-enabled_sources: [facebook, autotrader, cars, cargurus, truecar, edmunds, lexus, dealers, craigslist, search]
+enabled_sources: [lexus, dealers, facebook, autotrader, cars, cargurus, truecar, edmunds, craigslist, search]
 dealer_urls: []
 run_duration_minutes: 45
 minimum_deal_score: 65

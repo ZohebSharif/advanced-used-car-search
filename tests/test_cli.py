@@ -203,6 +203,60 @@ def test_source_diagnostic_passes_no_browser_to_trailing_disabled_source(
     assert "searches=0; retries=0; parsed=0; complete=False" in events["cars"]["detail"]
 
 
+def test_default_source_priority_drives_live_and_diagnostic_dispatch(
+    tmp_path, monkeypatch
+) -> None:
+    config = load(run_duration_minutes=0.01, request_delay_seconds=0, model_enabled=False)
+    dealer_adapter = cli.ADAPTERS["dealers"]
+    assert config["enabled_sources"][:2] == ["lexus", "dealers"]
+
+    class RecordingAdapter:
+        def __init__(self, name, dispatch_order, dealer_browsers):
+            self.name = name
+            self.dispatch_order = dispatch_order
+            self.dealer_browsers = dealer_browsers
+
+        def run(self, browser, run_config, deadline):
+            self.dispatch_order.append(self.name)
+            if self.name == "dealers":
+                self.dealer_browsers.append(browser)
+                return dealer_adapter.run(browser, run_config, deadline)
+            if self.name in cli.POLICY_RESTRICTED:
+                return Result("disabled", cli.POLICY_RESTRICTED[self.name])
+            return Result(
+                "empty",
+                "bounded diagnostic found no detail links",
+                completed_searches=1,
+                complete=True,
+            )
+
+    for test_mode in (False, True):
+        root = tmp_path / ("diagnostic" if test_mode else "live")
+        root.mkdir()
+        dispatch_order = []
+        dealer_browsers = []
+
+        monkeypatch.setattr(cli, "ROOT", root)
+        monkeypatch.setattr(cli, "load", lambda *args, **kwargs: config)
+        monkeypatch.setattr(
+            cli,
+            "ADAPTERS",
+            {
+                name: RecordingAdapter(name, dispatch_order, dealer_browsers)
+                for name in config["enabled_sources"]
+            },
+        )
+        monkeypatch.setattr(cli, "Browser", FakeBrowser)
+        cli.run(
+            Namespace(config=root / "config.yaml", headless=True, duration_minutes=0.01),
+            test=test_mode,
+        )
+
+        assert dispatch_order == config["enabled_sources"]
+        assert dispatch_order[:2] == ["lexus", "dealers"]
+        assert dealer_browsers == [None]
+
+
 def test_fixture_run_writes_only_fixture_report(tmp_path, monkeypatch) -> None:
     config = load(request_delay_seconds=0, model_enabled=False)
     monkeypatch.setattr(cli, "ROOT", tmp_path)

@@ -17,6 +17,11 @@ def test_mutable_defaults_are_isolated_between_loads(tmp_path) -> None:
     assert load(path)["dealer_urls"] == []
 
 
+def test_explicit_source_order_is_preserved() -> None:
+    order = ["autotrader", "lexus", "dealers"]
+    assert load(enabled_sources=order)["enabled_sources"] == order
+
+
 @pytest.mark.parametrize(
     "url",
     [

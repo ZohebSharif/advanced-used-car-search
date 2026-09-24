@@ -74,6 +74,8 @@ uv run lexus-hunter doctor
 
 A live run stops when enabled adapters finish; it does not idle until the full deadline. `test-sources` is deliberately diagnostic, not exhaustive. Status `empty` means a public search page loaded but no concrete vehicle-detail URL was identified; it is not proof that the source has no matching inventory. `blocked`, `failed`, `disabled`, and `deadline` are never reported as successful searches.
 
+The default daily source order is Lexus inventory first, explicitly configured California dealer inventory second, then the remaining enabled public sources. A custom `enabled_sources` list is dispatched in the supplied order. Dealers remain disabled and receive no browser when `dealer_urls` is empty.
+
 Facebook Marketplace, Cars.com, Craigslist, generic search-engine discovery, and dealers without explicitly configured public URLs are policy-disabled. Public access restrictions, authentication requirements, CAPTCHA, HTTP 401/403/429, private/non-global addresses, unsafe ports, and disallowed redirects fail closed without bypass or retry loops.
 
 Lexus L/Certified discovery uses the public inventory UI: it selects ES Hybrid, the configured target year, and the smallest supported distance that covers the requested radius, then opens each visible `VIEW DETAILS` overlay. The original requested radius remains the acceptance boundary: every accepted overlay must visibly report `MILES AWAY` at or below it. Lexus supports at most 500 miles; requests above 500 are searched at 500 and explicitly reported as incomplete coverage. The scanner stores a candidate only after that detail overlay supplies model, price, and mileage evidence.
