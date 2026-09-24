@@ -38,12 +38,13 @@ def test_vin_and_privacy() -> None:
 
 @pytest.mark.parametrize(
     ("status_code", "expected"),
-    [(302, "unavailable"), (403, "blocked")],
+    [(302, "unavailable"), (401, "blocked"), (403, "blocked"), (429, "blocked")],
 )
 def test_vin_validation_does_not_follow_redirects_or_access_blocks(
     monkeypatch, status_code: int, expected: str
 ) -> None:
     options = {}
+    calls = []
 
     class Response:
         def __init__(self):
@@ -66,12 +67,14 @@ def test_vin_validation_does_not_follow_redirects_or_access_blocks(
             return None
 
         def get(self, url):
+            calls.append(url)
             return Response()
 
     monkeypatch.setattr("lexus_hunter.rank.httpx.Client", Client)
     assert validate_vin("58AEA1C16NU018844", remote=True, year=2022) == expected
     assert options["follow_redirects"] is False
     assert options["trust_env"] is False
+    assert len(calls) == 1
 
 
 def test_dedup_and_price_history(tmp_path) -> None:
@@ -133,6 +136,37 @@ def test_source_does_not_retry_access_restriction() -> None:
     result = ADAPTERS["autotrader"].run(browser, config, time.monotonic() + 10)
     assert result.status == "blocked"
     assert result.retries == 0 and browser.calls == 1
+
+
+@pytest.mark.parametrize(
+    "signal",
+    [
+        "Authentication required",
+        "Too many requests",
+        "Rate limit exceeded",
+        "Paywall",
+        "Subscribe to continue",
+    ],
+)
+def test_source_soft_blocks_are_blocked_without_retry(signal: str) -> None:
+    checker = object.__new__(Browser)
+    checker.max_response_bytes = 10_000
+
+    class SoftBlockBrowser:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def visit(self, url, domains, timeout):
+            self.calls += 1
+            return checker._checked_html(f"<html><body>{signal}</body></html>")
+
+    browser = SoftBlockBrowser()
+    config = dict(CONFIG, request_delay_seconds=0)
+    result = ADAPTERS["autotrader"].run(browser, config, time.monotonic() + 10)
+
+    assert result.status == "blocked"
+    assert result.retries == 0
+    assert browser.calls == 1
 
 
 def test_source_page_budget_invalidates_partial_coverage() -> None:

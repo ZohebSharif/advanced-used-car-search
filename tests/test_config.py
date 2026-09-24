@@ -25,6 +25,7 @@ def test_explicit_source_order_is_preserved() -> None:
 @pytest.mark.parametrize(
     "url",
     [
+        "http://api.deepseek.com",
         "https://user:password@api.deepseek.com",
         "https://api.deepseek.com:8443",
         "https://127.0.0.1",

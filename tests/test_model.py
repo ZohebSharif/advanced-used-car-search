@@ -7,7 +7,7 @@ import httpx
 import pytest
 from lexus_hunter.config import load
 from lexus_hunter.model import DeepSeekClient, ModelBudget
-from openai import AuthenticationError, PermissionDeniedError, RateLimitError
+from openai import APIStatusError, AuthenticationError, PermissionDeniedError, RateLimitError
 
 
 def response(payload: dict):
@@ -85,15 +85,32 @@ def test_deepseek_json_contract_and_input_cap(monkeypatch) -> None:
     assert "secret-for-test" not in json.dumps(event.public_dict())
 
 
-def test_deepseek_transport_rejects_redirects(monkeypatch) -> None:
+def test_deepseek_transport_rejects_redirects_and_environment_proxies(monkeypatch) -> None:
     monkeypatch.setenv("DEEPSEEK_API_KEY", "secret-for-test")
+    options = {}
+
+    class Transport:
+        def __init__(self) -> None:
+            self.is_closed = False
+
+        def close(self) -> None:
+            self.is_closed = True
+
+    transport = Transport()
+
+    def transport_factory(**kwargs):
+        options.update(kwargs)
+        return transport
+
+    monkeypatch.setattr("lexus_hunter.model.httpx.Client", transport_factory)
     factory = FakeFactory([response({"trim": "Luxury"})])
     suggestion, event = DeepSeekClient(enabled_config(), client_factory=factory).extract(
         "visible", "https://example.com/vehicle/1"
     )
-    transport = factory.instances[0]["http_client"]
+
     assert suggestion and event.status == "used"
-    assert transport.follow_redirects is False
+    assert options["follow_redirects"] is False
+    assert options["trust_env"] is False
     assert transport.is_closed
 
 
@@ -143,6 +160,74 @@ def test_provider_access_restrictions_are_blocked_without_retry(
     assert event.attempt_count == 1
     assert len(factory.completions.calls) == 1
     assert sleeps == []
+
+
+@pytest.mark.parametrize("status_code", [401, 403, 429])
+def test_generic_provider_access_status_is_blocked_without_retry(
+    monkeypatch, status_code: int
+) -> None:
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "secret-for-test")
+    response_ = httpx.Response(
+        status_code,
+        request=httpx.Request("POST", "https://api.deepseek.com/chat/completions"),
+    )
+    factory = FakeFactory(
+        [APIStatusError("provider access restriction", response=response_, body=None)]
+    )
+    sleeps = []
+    suggestion, event = DeepSeekClient(
+        enabled_config(), client_factory=factory, sleeper=sleeps.append
+    ).extract("visible", "https://example.com/vehicle/1")
+
+    assert suggestion is None
+    assert event.status == "blocked"
+    assert event.attempt_count == 1
+    assert len(factory.completions.calls) == 1
+    assert sleeps == []
+
+
+def test_provider_redirect_is_not_followed_or_retried(monkeypatch) -> None:
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "secret-for-test")
+    response_ = httpx.Response(
+        302,
+        headers={"location": "https://redirect.example/collect"},
+        request=httpx.Request("POST", "https://api.deepseek.com/chat/completions"),
+    )
+    factory = FakeFactory([APIStatusError("redirect", response=response_, body=None)])
+    sleeps = []
+    suggestion, event = DeepSeekClient(
+        enabled_config(), client_factory=factory, sleeper=sleeps.append
+    ).extract("visible", "https://example.com/vehicle/1")
+
+    assert suggestion is None
+    assert event.status == "failed"
+    assert event.attempt_count == 1
+    assert len(factory.completions.calls) == 1
+    assert sleeps == []
+
+
+def test_generic_provider_5xx_retries_once(monkeypatch) -> None:
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "secret-for-test")
+    response_ = httpx.Response(
+        503,
+        request=httpx.Request("POST", "https://api.deepseek.com/chat/completions"),
+    )
+    factory = FakeFactory(
+        [
+            APIStatusError("temporary provider failure", response=response_, body=None),
+            response({"trim": "Luxury"}),
+        ]
+    )
+    sleeps = []
+    suggestion, event = DeepSeekClient(
+        enabled_config(), client_factory=factory, sleeper=sleeps.append
+    ).extract("visible", "https://example.com/vehicle/1")
+
+    assert suggestion and suggestion.trim == "Luxury"
+    assert event.status == "used"
+    assert event.attempt_count == 2
+    assert len(factory.completions.calls) == 2
+    assert sleeps == [0.25]
 
 
 def test_invalid_or_extra_output_is_isolated(monkeypatch) -> None:

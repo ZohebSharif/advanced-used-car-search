@@ -20,6 +20,19 @@ from openai import (
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 
+class _BlockedProviderError(RuntimeError):
+    def __init__(self, cause: Exception):
+        super().__init__(str(cause))
+        self.cause = cause
+
+
+class _TransientProviderError(RuntimeError):
+    def __init__(self, cause: Exception):
+        super().__init__(str(cause))
+        self.cause = cause
+
+
+
 class ExtractionSuggestion(BaseModel):
     """Untrusted suggestions. Deterministic extraction decides which values are usable."""
 
@@ -91,6 +104,22 @@ class DeepSeekClient:
     BLOCKED = (AuthenticationError, PermissionDeniedError, RateLimitError)
     TRANSIENT = (APIConnectionError, APITimeoutError, InternalServerError, TimeoutError)
 
+    @staticmethod
+    def _status_code(exc: Exception) -> int | None:
+        status = getattr(exc, "status_code", None)
+        if status is None:
+            status = getattr(getattr(exc, "response", None), "status_code", None)
+        return status if isinstance(status, int) else None
+
+    @classmethod
+    def _is_blocked(cls, exc: Exception) -> bool:
+        return isinstance(exc, cls.BLOCKED) or cls._status_code(exc) in {401, 403, 429}
+
+    @classmethod
+    def _is_transient(cls, exc: Exception) -> bool:
+        status = cls._status_code(exc)
+        return isinstance(exc, cls.TRANSIENT) or (status is not None and 500 <= status <= 599)
+
     def __init__(
         self,
         config: dict[str, Any],
@@ -156,11 +185,13 @@ class DeepSeekClient:
                         ],
                     )
                     break
-                except self.BLOCKED:
-                    raise
-                except self.TRANSIENT:
-                    if attempt == 1:
+                except Exception as exc:
+                    if self._is_blocked(exc):
+                        raise _BlockedProviderError(exc) from exc
+                    if not self._is_transient(exc):
                         raise
+                    if attempt == 1:
+                        raise _TransientProviderError(exc) from exc
                     self._sleeper(0.25)
             if response is None:
                 raise RuntimeError("model returned no response")
@@ -181,12 +212,12 @@ class DeepSeekClient:
         except (json.JSONDecodeError, ValidationError, ValueError, TypeError, KeyError, IndexError) as exc:
             status = "invalid-output"
             detail = type(exc).__name__
-        except self.BLOCKED as exc:
+        except _BlockedProviderError as exc:
             status = "blocked"
-            detail = type(exc).__name__
-        except self.TRANSIENT as exc:
+            detail = type(exc.cause).__name__
+        except _TransientProviderError as exc:
             status = "transient-failure"
-            detail = type(exc).__name__
+            detail = type(exc.cause).__name__
         except Exception as exc:  # Provider failures are isolated; deterministic extraction continues.
             status = "failed"
             detail = type(exc).__name__

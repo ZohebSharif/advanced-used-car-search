@@ -166,8 +166,10 @@ def test_browser_blocks_service_workers_and_websockets(monkeypatch) -> None:
     "signal",
     [
         "Authentication required",
-        "Subscribe to continue",
         "Too many requests",
+        "Rate limit exceeded",
+        "Paywall",
+        "Subscribe to continue",
     ],
 )
 def test_browser_rejects_access_control_signals(signal: str) -> None:
@@ -175,6 +177,14 @@ def test_browser_rejects_access_control_signals(signal: str) -> None:
     browser.max_response_bytes = 10_000
     with pytest.raises(PermissionError):
         browser._checked_html(f"<html><body>{signal}</body></html>")
+
+
+def test_browser_allows_ordinary_subscribe_footer() -> None:
+    browser = object.__new__(Browser)
+    browser.max_response_bytes = 10_000
+    html = "<html><body>Vehicle inventory<footer>Subscribe for weekly updates</footer></body></html>"
+
+    assert browser._checked_html(html) == html
 
 
 def test_canonical_url_removes_tracking_but_preserves_identity_query() -> None:

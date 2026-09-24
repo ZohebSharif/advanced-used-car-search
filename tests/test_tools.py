@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 from lexus_hunter.config import load
-from lexus_hunter.security import UnsafeUrlError
+from lexus_hunter.security import UnsafeUrlError, URLPolicy
 from lexus_hunter.store import Store
 from lexus_hunter.tools import AgentTools
 
@@ -16,17 +16,19 @@ class Response:
         *,
         body: bytes = b"",
         location: str | None = None,
+        peer_address: str = "93.184.216.34",
     ) -> None:
         self.status_code = status_code
         self.headers = {"location": location} if location else {}
         self.extensions = {
             "network_stream": SimpleNamespace(
-                get_extra_info=lambda name: ("93.184.216.34", 443)
+                get_extra_info=lambda name: (peer_address, 443)
             )
         }
         self.url = "https://www.autotrader.com/search"
         self.encoding = "utf-8"
         self._body = body
+        self.body_reads = 0
 
     def __enter__(self):
         return self
@@ -38,6 +40,7 @@ class Response:
         return None
 
     def iter_bytes(self):
+        self.body_reads += 1
         yield self._body
 
 
@@ -60,6 +63,18 @@ class Client:
 def tools(tmp_path) -> AgentTools:
     config = load(request_delay_seconds=0)
     return AgentTools(config, Store(tmp_path / "test.sqlite3"), tmp_path / "evidence")
+
+
+@pytest.fixture(autouse=True)
+def offline_url_policy(monkeypatch) -> None:
+    monkeypatch.setattr(
+        AgentTools,
+        "_policy",
+        lambda self, source: URLPolicy(
+            self._domains(source),
+            resolver=lambda host, port: ["93.184.216.34"],
+        ),
+    )
 
 
 @pytest.mark.parametrize("status_code", [401, 403, 429])
@@ -99,9 +114,32 @@ def test_http_fetch_revalidates_redirect_destination(tmp_path, monkeypatch) -> N
     assert len(calls) == 1
 
 
+def test_http_fetch_rejects_private_peer_before_reading_body(tmp_path, monkeypatch) -> None:
+    calls = []
+    response = Response(200, body=b"must not be consumed", peer_address="127.0.0.1")
+    monkeypatch.setattr(
+        "lexus_hunter.tools.httpx.Client",
+        lambda **kwargs: Client(response, calls, **kwargs),
+    )
+
+    with pytest.raises(UnsafeUrlError):
+        tools(tmp_path).fetch_public_page(
+            "https://www.autotrader.com/cars-for-sale/vehicle/1", "autotrader"
+        )
+
+    assert len(calls) == 1
+    assert response.body_reads == 0
+
+
 @pytest.mark.parametrize(
     "signal",
-    ["Authentication required", "Subscribe to continue", "Too many requests"],
+    [
+        "Authentication required",
+        "Too many requests",
+        "Rate limit exceeded",
+        "Paywall",
+        "Subscribe to continue",
+    ],
 )
 def test_http_fetch_blocks_access_control_pages(tmp_path, monkeypatch, signal: str) -> None:
     calls = []
