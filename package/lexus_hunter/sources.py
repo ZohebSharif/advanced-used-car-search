@@ -50,6 +50,13 @@ def _lexus_ui_radius(requested_radius: int) -> int:
     return next(radius for radius in LEXUS_UI_RADII if radius >= capped_radius)
 
 
+def _remaining_timeout_ms(deadline: float) -> int:
+    remaining = int((deadline - time.monotonic()) * 1_000)
+    if remaining <= 0:
+        raise TimeoutError("time limit reached")
+    return remaining
+
+
 @dataclass
 class Result:
     status: str
@@ -118,15 +125,6 @@ class Browser:
         year_input = self.page.locator(f'input[type="checkbox"][value="{year}"]')
         if not year_input.is_checked():
             self.page.locator("label").filter(has_text=str(year)).click()
-        self._apply_lexus_filter(
-            self.page.get_by_role("button", name="APPLY").last,
-            {"model": "ESh", "year": str(year)},
-            timeout,
-        )
-
-        filter_button = self.page.get_by_role("button", name=re.compile(r"^FILTER"))
-        if filter_button.get_attribute("aria-expanded") != "true":
-            filter_button.click()
         self.page.get_by_role("tab", name="DISTANCE").click()
         distance = _lexus_ui_radius(radius)
         distance_input = self.page.locator(f'input[type="radio"][value="{distance}"]')
@@ -356,7 +354,7 @@ class Adapter:
             visits += 1
             for attempt in range(2):
                 try:
-                    timeout = min(18_000, max(1_000, int((deadline - time.monotonic()) * 1_000)))
+                    timeout = min(18_000, _remaining_timeout_ms(deadline))
                     method = self.visit_detail if detail else self.visit_search
                     return method(browser, url, domains, timeout, config)
                 except (PermissionError, UnsafeUrlError, ValueError):
@@ -410,8 +408,12 @@ class Adapter:
                         coverage_complete = False
                         break
                     except Exception as exc:
-                        result.status = "failed"
-                        result.detail += f"; detail unavailable ({type(exc).__name__})"
+                        if time.monotonic() >= deadline:
+                            result.status = "deadline"
+                            result.detail += "; time limit reached"
+                        else:
+                            result.status = "failed"
+                            result.detail += f"; detail unavailable ({type(exc).__name__})"
                         coverage_complete = False
                         break
                     if config["request_delay_seconds"]:
@@ -429,7 +431,11 @@ class Adapter:
                 coverage_complete = False
                 break
             except Exception as exc:
-                result.status, result.detail = "failed", f"{type(exc).__name__}: {str(exc)[:160]}"
+                if time.monotonic() >= deadline:
+                    result.status, result.detail = "deadline", "time limit reached during search"
+                else:
+                    result.status = "failed"
+                    result.detail = f"{type(exc).__name__}: {str(exc)[:160]}"
                 coverage_complete = False
                 break
         result.complete = coverage_complete and result.completed_searches == len(searches)
@@ -524,12 +530,17 @@ class LexusAdapter(TemplateAdapter):
         timeout: int,
         config: dict[str, Any],
     ) -> str:
-        browser.visit(url, domains, timeout=timeout)
+        operation_deadline = time.monotonic() + timeout / 1_000
+        browser.visit(
+            url,
+            domains,
+            timeout=_remaining_timeout_ms(operation_deadline),
+        )
         configured_radius = int(config.get("search_radius_miles") or 500)
         return browser.filter_lexus_inventory(
             year=int(config["target_year"]),
             radius=configured_radius,
-            timeout=timeout,
+            timeout=_remaining_timeout_ms(operation_deadline),
         )
 
     def visit_detail(

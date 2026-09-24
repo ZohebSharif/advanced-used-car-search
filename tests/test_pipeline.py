@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 from datetime import UTC, datetime
 
+import lexus_hunter.sources as source_module
 import pytest
 from lexus_hunter.config import ROOT, load
 from lexus_hunter.extract import extract, privacy
@@ -135,6 +136,164 @@ def test_lexus_adapter_filters_visible_inventory_and_reads_detail() -> None:
     assert result.complete is True
     assert len(result.listings) == 1
     assert browser.calls == ["search", "filter:2022:250", "detail"]
+
+
+def test_lexus_search_shares_one_timeout_budget(monkeypatch) -> None:
+    clock = [100.0]
+    timeouts = []
+
+    class TimedBrowser:
+        def visit(self, url, domains, timeout):
+            timeouts.append(timeout)
+            clock[0] += 4
+            return "<html><body>Lexus inventory</body></html>"
+
+        def filter_lexus_inventory(self, *, year, radius, timeout):
+            timeouts.append(timeout)
+            return "<html><body>Filtered Lexus inventory</body></html>"
+
+    monkeypatch.setattr(source_module.time, "monotonic", lambda: clock[0])
+    source_module.LexusAdapter().visit_search(
+        TimedBrowser(),
+        "https://www.lexus.com/lcertified/search-inventory?zip=95112",
+        ("lexus.com",),
+        10_000,
+        dict(CONFIG, search_radius_miles=500),
+    )
+
+    assert timeouts == [10_000, 6_000]
+
+
+def test_lexus_shared_timeout_expiry_is_deadline_not_failure(monkeypatch) -> None:
+    clock = [0.0]
+
+    class ExpiringBrowser:
+        def visit(self, url, domains, timeout):
+            clock[0] = 10.0
+            return "<html><body>Lexus inventory</body></html>"
+
+        def filter_lexus_inventory(self, *, year, radius, timeout):
+            raise AssertionError("filter must not start after the deadline")
+
+    monkeypatch.setattr(source_module.time, "monotonic", lambda: clock[0])
+    result = source_module.LexusAdapter().run(
+        ExpiringBrowser(),
+        dict(CONFIG, request_delay_seconds=0, search_radius_miles=500),
+        10.0,
+    )
+
+    assert result.status == "deadline"
+    assert result.complete is False
+    assert result.completed_searches == 0
+    assert result.retries == 0
+
+
+
+def test_lexus_browser_exception_at_deadline_is_deadline(monkeypatch) -> None:
+    clock = [0.0]
+
+    class BrowserTimeout(Exception):
+        pass
+
+    class TimedOutBrowser:
+        def visit(self, url, domains, timeout):
+            clock[0] = 10.0
+            raise BrowserTimeout("browser operation timed out")
+
+    monkeypatch.setattr(source_module.time, "monotonic", lambda: clock[0])
+    result = source_module.LexusAdapter().run(
+        TimedOutBrowser(),
+        dict(CONFIG, request_delay_seconds=0, search_radius_miles=500),
+        10.0,
+    )
+
+    assert result.status == "deadline"
+    assert result.complete is False
+    assert result.completed_searches == 0
+    assert result.retries == 0
+
+
+def test_lexus_filters_model_year_and_distance_with_one_request() -> None:
+    apply_calls = []
+
+    class Control:
+        @property
+        def last(self):
+            return self
+
+        def filter(self, **kwargs):
+            return self
+
+        def get_attribute(self, name):
+            return "true"
+
+        def is_checked(self):
+            return False
+
+        def click(self):
+            return None
+
+    class FilterPage:
+        def get_by_role(self, role, name):
+            return Control()
+
+        def locator(self, selector):
+            return Control()
+
+        def content(self):
+            return "<html><body>Filtered Lexus inventory</body></html>"
+
+    class FilterBrowser:
+        page = FilterPage()
+        _lexus_year = None
+        _lexus_radius = None
+
+        def _apply_lexus_filter(self, button, expected_query, timeout):
+            apply_calls.append((expected_query, timeout))
+
+        def _checked_html(self, html):
+            return html
+
+    source_module.Browser.filter_lexus_inventory(
+        FilterBrowser(),
+        year=2022,
+        radius=500,
+        timeout=10_000,
+    )
+
+    assert apply_calls == [
+        ({"model": "ESh", "year": "2022", "radius": "500"}, 10_000)
+    ]
+
+
+def test_lexus_deadline_after_search_is_incomplete_and_unparsed(monkeypatch) -> None:
+    clock = [0.0]
+
+    class DeadlineBrowser:
+        def visit(self, url, domains, timeout):
+            return "<html><body>Lexus inventory</body></html>"
+
+        def filter_lexus_inventory(self, *, year, radius, timeout):
+            clock[0] = 10.0
+            return (
+                '<a href="?link[LcertSearchInventory][setVin]=58AD21B19NU012345">'
+                "2022 ES 300h VIEW DETAILS</a>"
+            )
+
+        def open_lexus_detail(self, url, domains, timeout):
+            raise AssertionError("detail must not start after the deadline")
+
+    monkeypatch.setattr(source_module.time, "monotonic", lambda: clock[0])
+    result = source_module.LexusAdapter().run(
+        DeadlineBrowser(),
+        dict(CONFIG, request_delay_seconds=0, search_radius_miles=500),
+        10.0,
+    )
+
+    assert result.status == "deadline"
+    assert result.complete is False
+    assert result.completed_searches == 1
+    assert result.listings == []
 
 
 @pytest.mark.parametrize(("requested", "selected"), [(250, 500), (501, 500)])
