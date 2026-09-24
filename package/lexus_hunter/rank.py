@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import json
 import re
 from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import quote
-from urllib.request import urlopen
+
+import httpx
 
 from .extract import CA
 
@@ -43,8 +43,14 @@ def validate_vin(vin: str, remote: bool = True, year: int = 2022) -> str:
             + quote(vin)
             + f"?format=json&modelyear={year}"
         )
-        with urlopen(url, timeout=7) as response:  # noqa: S310 - fixed NHTSA HTTPS endpoint
-            item = json.load(response)["Results"][0]
+        with httpx.Client(timeout=7, follow_redirects=False, trust_env=False) as client:
+            response = client.get(url)
+            if response.status_code in {301, 302, 303, 307, 308}:
+                return "unavailable"
+            if response.status_code in {401, 403, 429}:
+                return "blocked"
+            response.raise_for_status()
+            item = response.json()["Results"][0]
         if str(item.get("ErrorCode", "")).strip() != "0":
             return "invalid"
         make = str(item.get("Make", "")).upper()
@@ -86,7 +92,7 @@ def evaluate(
         flags.append("California location not confirmed")
     if result["vin_status"] in {"invalid", "mismatch", "model-unconfirmed"}:
         flags.append("VIN failed deterministic validation: " + result["vin_status"])
-    elif result["vin_status"] in {"missing", "unavailable", "unchecked"}:
+    elif result["vin_status"] in {"missing", "unavailable", "unchecked", "blocked"}:
         flags.append("VIN needs manual verification: " + result["vin_status"])
     price, miles = result.get("price"), result.get("mileage")
     if price is None or miles is None:

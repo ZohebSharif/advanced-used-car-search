@@ -87,6 +87,14 @@ def test_source_diagnostic_does_not_mutate_live_inventory(tmp_path, monkeypatch)
             "SELECT observed,last_seen,last_seen_run,missing_runs,stale FROM listings"
         ).fetchone()
     )
+    before_counts = tuple(
+        database.db.execute(
+            "SELECT "
+            "(SELECT COUNT(*) FROM runs),"
+            "(SELECT COUNT(*) FROM source_events),"
+            "(SELECT COUNT(*) FROM observations)"
+        ).fetchone()
+    )
     database.close()
 
     config = load(
@@ -117,8 +125,17 @@ def test_source_diagnostic_does_not_mutate_live_inventory(tmp_path, monkeypatch)
             "SELECT observed,last_seen,last_seen_run,missing_runs,stale FROM listings"
         ).fetchone()
     )
+    after_counts = tuple(
+        database.db.execute(
+            "SELECT "
+            "(SELECT COUNT(*) FROM runs),"
+            "(SELECT COUNT(*) FROM source_events),"
+            "(SELECT COUNT(*) FROM observations)"
+        ).fetchone()
+    )
     database.close()
     assert after == before
+    assert after_counts == before_counts
     diagnostic = Store(tmp_path / "diagnostic.sqlite3")
     assert len(diagnostic.listings()) == 1
     diagnostic.close()

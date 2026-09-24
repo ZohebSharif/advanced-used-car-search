@@ -7,7 +7,7 @@ import lexus_hunter.sources as source_module
 import pytest
 from lexus_hunter.config import ROOT, load
 from lexus_hunter.extract import extract, privacy
-from lexus_hunter.rank import evaluate, vin_check_digit
+from lexus_hunter.rank import evaluate, validate_vin, vin_check_digit
 from lexus_hunter.sources import ADAPTERS, Browser, _lexus_ui_radius
 from lexus_hunter.store import Store
 
@@ -34,6 +34,44 @@ def test_vin_and_privacy() -> None:
     assert not vin_check_digit("1" * 16 + "I")
     assert "[redacted phone]" in privacy("Call 408-555-1234")
     assert "[redacted email]" in privacy("Write x@example.com")
+
+
+@pytest.mark.parametrize(
+    ("status_code", "expected"),
+    [(302, "unavailable"), (403, "blocked")],
+)
+def test_vin_validation_does_not_follow_redirects_or_access_blocks(
+    monkeypatch, status_code: int, expected: str
+) -> None:
+    options = {}
+
+    class Response:
+        def __init__(self):
+            self.status_code = status_code
+
+        def raise_for_status(self):
+            raise AssertionError("redirects and access blocks must be handled before parsing")
+
+        def json(self):
+            raise AssertionError("redirects and access blocks must not be parsed")
+
+    class Client:
+        def __init__(self, **kwargs):
+            options.update(kwargs)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def get(self, url):
+            return Response()
+
+    monkeypatch.setattr("lexus_hunter.rank.httpx.Client", Client)
+    assert validate_vin("58AEA1C16NU018844", remote=True, year=2022) == expected
+    assert options["follow_redirects"] is False
+    assert options["trust_env"] is False
 
 
 def test_dedup_and_price_history(tmp_path) -> None:

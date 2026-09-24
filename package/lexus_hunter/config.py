@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ipaddress
 import os
 from copy import deepcopy
 from pathlib import Path
@@ -109,8 +110,24 @@ def _validate(config: dict[str, Any]) -> None:
             raise ValueError(f"{key} must be a non-negative integer")
     if not 1 <= float(config["model_timeout_seconds"]) <= 120:
         raise ValueError("model_timeout_seconds must be between 1 and 120")
-    if not str(config["model_base_url"]).startswith("https://"):
-        raise ValueError("model_base_url must use HTTPS")
+    model_url = urlparse(str(config["model_base_url"]))
+    model_port = model_url.port or (443 if model_url.scheme == "https" else 0)
+    model_host = (model_url.hostname or "").lower().rstrip(".")
+    try:
+        model_ip = ipaddress.ip_address(model_host)
+    except ValueError:
+        model_ip = None
+    if (
+        model_url.scheme != "https"
+        or not model_host
+        or model_url.username
+        or model_url.password
+        or model_port != 443
+        or model_host == "localhost"
+        or model_host.endswith(".localhost")
+        or (model_ip is not None and not model_ip.is_global)
+    ):
+        raise ValueError("model_base_url must be a public HTTPS URL without credentials or custom ports")
     if not isinstance(config.get("dealer_urls"), list):
         raise ValueError("dealer_urls must be a list")
     for url in config["dealer_urls"]:

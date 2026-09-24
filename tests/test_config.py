@@ -25,6 +25,19 @@ def test_explicit_source_order_is_preserved() -> None:
 @pytest.mark.parametrize(
     "url",
     [
+        "https://user:password@api.deepseek.com",
+        "https://api.deepseek.com:8443",
+        "https://127.0.0.1",
+    ],
+)
+def test_model_base_url_rejects_unsafe_shapes(url: str) -> None:
+    with pytest.raises(ValueError):
+        load(model_base_url=url)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
         "file:///etc/passwd",
         "https://user:password@dealer.example/inventory",
         "https://dealer.example:8443/inventory",

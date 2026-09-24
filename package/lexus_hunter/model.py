@@ -7,7 +7,16 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from typing import Any, Protocol
 
-from openai import APIConnectionError, APITimeoutError, InternalServerError, OpenAI, RateLimitError
+import httpx
+from openai import (
+    APIConnectionError,
+    APITimeoutError,
+    AuthenticationError,
+    InternalServerError,
+    OpenAI,
+    PermissionDeniedError,
+    RateLimitError,
+)
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 
@@ -79,7 +88,8 @@ class DisabledModelClient:
 
 
 class DeepSeekClient:
-    TRANSIENT = (APIConnectionError, APITimeoutError, RateLimitError, InternalServerError, TimeoutError)
+    BLOCKED = (AuthenticationError, PermissionDeniedError, RateLimitError)
+    TRANSIENT = (APIConnectionError, APITimeoutError, InternalServerError, TimeoutError)
 
     def __init__(
         self,
@@ -112,12 +122,14 @@ class DeepSeekClient:
         clipped = visible_text[: self._max_input_chars]
         started = time.monotonic()
         attempts = 0
+        transport = httpx.Client(follow_redirects=False, trust_env=False)
         try:
             client = self._factory(
                 api_key=self._api_key,
                 base_url=self._base_url,
                 timeout=self._timeout,
                 max_retries=0,
+                http_client=transport,
             )
             response = None
             for attempt in range(2):
@@ -144,6 +156,8 @@ class DeepSeekClient:
                         ],
                     )
                     break
+                except self.BLOCKED:
+                    raise
                 except self.TRANSIENT:
                     if attempt == 1:
                         raise
@@ -167,12 +181,17 @@ class DeepSeekClient:
         except (json.JSONDecodeError, ValidationError, ValueError, TypeError, KeyError, IndexError) as exc:
             status = "invalid-output"
             detail = type(exc).__name__
+        except self.BLOCKED as exc:
+            status = "blocked"
+            detail = type(exc).__name__
         except self.TRANSIENT as exc:
             status = "transient-failure"
             detail = type(exc).__name__
         except Exception as exc:  # Provider failures are isolated; deterministic extraction continues.
             status = "failed"
             detail = type(exc).__name__
+        finally:
+            transport.close()
         return None, ModelCall(
             status,
             self.model_name,

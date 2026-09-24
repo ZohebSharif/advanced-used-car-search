@@ -35,7 +35,8 @@ POLICY_RESTRICTED = {
 }
 BLOCKED = re.compile(
     r"captcha|verify you are human|access denied|unusual traffic|sign in to continue|log in to continue|"
-    r"automated access|are you a robot|request blocked",
+    r"authentication required|unauthorized|forbidden|automated access|are you a robot|request blocked|"
+    r"subscribe to continue|subscription required|paywall|rate limit(?:ed)?|too many requests",
     re.IGNORECASE,
 )
 TARGET = re.compile(r"\bES\s*300\s*h\b", re.IGNORECASE)
@@ -75,17 +76,21 @@ class Browser:
 
         self.playwright = sync_playwright().start()
         self.browser = self.playwright.chromium.launch(headless=headless)
-        self.context = self.browser.new_context()
+        self.context = self.browser.new_context(service_workers="block")
         self.page = self.context.new_page()
         self.max_response_bytes = max_response_bytes
         self._active_policy: URLPolicy | None = None
-        self.page.route("**/*", self._route)
+        self.context.route("**/*", self._route)
+        self.context.route_web_socket("**/*", lambda route: route.close())
         self._lexus_year: int | None = None
         self._lexus_radius: int | None = None
 
     def _route(self, route: Any) -> None:
         request = route.request
         parsed = urlparse(request.url)
+        if request.method.upper() not in {"GET", "HEAD", "OPTIONS"}:
+            route.abort()
+            return
         if parsed.scheme in {"data", "blob"}:
             route.continue_()
             return

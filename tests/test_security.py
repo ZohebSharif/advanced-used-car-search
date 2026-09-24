@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from types import SimpleNamespace
 
 import lexus_hunter.sources as source_module
@@ -35,13 +36,13 @@ def test_url_policy_rejects_non_global_resolution(address: str) -> None:
 
 
 class FakeRoute:
-    def __init__(self, url: str, frame: object, navigation: bool = False):
+    def __init__(self, url: str, frame: object, navigation: bool = False, method: str = "GET"):
         self.request = SimpleNamespace(
             url=url,
             frame=frame,
+            method=method,
             is_navigation_request=lambda: navigation,
         )
-        self.action: str | None = None
 
     def abort(self) -> None:
         self.action = "abort"
@@ -100,6 +101,80 @@ def test_browser_route_rejects_public_non_allowlisted_subresource(monkeypatch) -
     route = FakeRoute("https://tracker.example.net/pixel", object())
     browser._route(route)
     assert route.action == "abort"
+
+
+def test_browser_route_allows_reads_and_rejects_mutating_methods(monkeypatch) -> None:
+    public = resolver_for("93.184.216.34")
+    monkeypatch.setattr(
+        source_module,
+        "URLPolicy",
+        lambda domains: URLPolicy(domains, resolver=public),
+    )
+    browser = bare_browser()
+    browser._active_policy = URLPolicy(("example.com",), resolver=public)
+    get_route = FakeRoute("https://example.com/vehicle/1", object(), method="GET")
+    post_route = FakeRoute("https://example.com/contact", object(), method="POST")
+    browser._route(get_route)
+    browser._route(post_route)
+    assert get_route.action == "continue"
+    assert post_route.action == "abort"
+
+
+def test_browser_blocks_service_workers_and_websockets(monkeypatch) -> None:
+    context_options = {}
+    context_routes = []
+    websocket_routes = []
+
+    class FakePage:
+        pass
+
+    class FakeContext:
+        def new_page(self):
+            return FakePage()
+
+        def route(self, pattern, handler):
+            context_routes.append((pattern, handler))
+
+        def route_web_socket(self, pattern, handler):
+            websocket_routes.append((pattern, handler))
+
+    class FakeChromium:
+        def launch(self, *, headless):
+            return SimpleNamespace(
+                new_context=lambda **kwargs: context_options.update(kwargs) or FakeContext()
+            )
+
+    manager = SimpleNamespace(chromium=FakeChromium())
+    starter = SimpleNamespace(start=lambda: manager)
+    monkeypatch.setitem(
+        sys.modules,
+        "playwright.sync_api",
+        SimpleNamespace(sync_playwright=lambda: starter),
+    )
+
+    Browser(headless=True)
+
+    assert context_options["service_workers"] == "block"
+    assert context_routes and context_routes[0][0] == "**/*"
+    assert websocket_routes and websocket_routes[0][0] == "**/*"
+    closed = []
+    websocket_routes[0][1](SimpleNamespace(close=lambda: closed.append(True)))
+    assert closed == [True]
+
+
+@pytest.mark.parametrize(
+    "signal",
+    [
+        "Authentication required",
+        "Subscribe to continue",
+        "Too many requests",
+    ],
+)
+def test_browser_rejects_access_control_signals(signal: str) -> None:
+    browser = object.__new__(Browser)
+    browser.max_response_bytes = 10_000
+    with pytest.raises(PermissionError):
+        browser._checked_html(f"<html><body>{signal}</body></html>")
 
 
 def test_canonical_url_removes_tracking_but_preserves_identity_query() -> None:

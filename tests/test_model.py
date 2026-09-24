@@ -3,8 +3,11 @@ from __future__ import annotations
 import json
 from types import SimpleNamespace
 
+import httpx
+import pytest
 from lexus_hunter.config import load
 from lexus_hunter.model import DeepSeekClient, ModelBudget
+from openai import AuthenticationError, PermissionDeniedError, RateLimitError
 
 
 def response(payload: dict):
@@ -82,6 +85,18 @@ def test_deepseek_json_contract_and_input_cap(monkeypatch) -> None:
     assert "secret-for-test" not in json.dumps(event.public_dict())
 
 
+def test_deepseek_transport_rejects_redirects(monkeypatch) -> None:
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "secret-for-test")
+    factory = FakeFactory([response({"trim": "Luxury"})])
+    suggestion, event = DeepSeekClient(enabled_config(), client_factory=factory).extract(
+        "visible", "https://example.com/vehicle/1"
+    )
+    transport = factory.instances[0]["http_client"]
+    assert suggestion and event.status == "used"
+    assert transport.follow_redirects is False
+    assert transport.is_closed
+
+
 def test_transient_failure_retries_once(monkeypatch) -> None:
     monkeypatch.setenv("DEEPSEEK_API_KEY", "secret-for-test")
     factory = FakeFactory([TimeoutError("temporary"), response({"trim": "Luxury"})])
@@ -92,6 +107,42 @@ def test_transient_failure_retries_once(monkeypatch) -> None:
     assert event.attempt_count == 2
     assert len(factory.completions.calls) == 2
     assert sleeps == [0.25]
+
+
+@pytest.mark.parametrize(
+    ("error_type", "status_code"),
+    [
+        (AuthenticationError, 401),
+        (PermissionDeniedError, 403),
+        (RateLimitError, 429),
+    ],
+)
+def test_provider_access_restrictions_are_blocked_without_retry(
+    monkeypatch, error_type, status_code: int
+) -> None:
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "secret-for-test")
+    response_ = httpx.Response(
+        status_code,
+        request=httpx.Request("POST", "https://api.deepseek.com/chat/completions"),
+    )
+    factory = FakeFactory(
+        [
+            error_type(
+                "provider access restriction",
+                response=response_,
+                body=None,
+            )
+        ]
+    )
+    sleeps = []
+    client = DeepSeekClient(enabled_config(), client_factory=factory, sleeper=sleeps.append)
+    suggestion, event = client.extract("visible", "https://example.com/vehicle/1")
+
+    assert suggestion is None
+    assert event.status == "blocked"
+    assert event.attempt_count == 1
+    assert len(factory.completions.calls) == 1
+    assert sleeps == []
 
 
 def test_invalid_or_extra_output_is_isolated(monkeypatch) -> None:
