@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import json
 import os
 
 import pytest
 from lexus_hunter.config import load
 from lexus_hunter.model import DeepSeekClient
-from lexus_hunter.report import build, write
+from lexus_hunter.report import build, table, write
 
 
 def candidate():
@@ -64,6 +65,32 @@ def test_report_exposes_provenance_lifecycle_model_and_source_failures(tmp_path)
     assert "relisted: True" in markdown
     assert "truecar: blocked — HTTP 403" in markdown
     assert "calls=1/3" in markdown
+
+
+def test_report_states_when_no_trustworthy_listing_exists(tmp_path, capsys) -> None:
+    item = candidate()
+    item["category"] = "avoid"
+    item["score"] = 41
+    summary = {
+        "started": "2026-09-23T00:00:00+00:00",
+        "finished": "2026-09-23T00:00:01+00:00",
+        "duration_seconds": 1.0,
+        "mode": "source diagnostic",
+        "sources_searched": ["lexus"],
+        "discovered": 1,
+        "deduplicated": 0,
+        "excluded": 1,
+        "ranked": 0,
+        "model_usage": {},
+    }
+    report = build(summary, [item], [], {"new": [], "drops": [], "relisted": [], "stale": []})
+    write(report, tmp_path)
+    table([item])
+    assert report["trustworthy_listings_found"] is False
+    stored = json.loads((tmp_path / "latest.json").read_text(encoding="utf-8"))
+    assert stored["trustworthy_listing_message"] == "No trustworthy listings found."
+    assert "No trustworthy listings found" in (tmp_path / "latest.md").read_text(encoding="utf-8")
+    assert "No trustworthy listings found" in capsys.readouterr().out
 
 
 @pytest.mark.skipif(

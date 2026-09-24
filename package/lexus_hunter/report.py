@@ -6,6 +6,7 @@ from typing import Any
 
 RANKED = {"excellent deal", "strong candidate", "worth watching"}
 NEAR = {"near match", "fallback year"}
+NO_TRUSTWORTHY = "No trustworthy listings found."
 
 
 def build(
@@ -33,6 +34,8 @@ def build(
         stale_listings=changes.get("stale", []),
         source_events=events,
         shortlist=exact[:3],
+        trustworthy_listings_found=bool(exact),
+        trustworthy_listing_message=None if exact else NO_TRUSTWORTHY,
     )
     return summary
 
@@ -83,6 +86,8 @@ def write(report: dict[str, Any], directory: str | Path) -> str:
             f"relisted: {len(report['relisted_listings'])} | stale: {len(report['stale_listings'])}"
         ),
     ]
+    if report["trustworthy_listing_message"]:
+        lines.extend(["", f"**{report['trustworthy_listing_message']}**"])
 
     def group(title: str, group_items: list[dict[str, Any]]) -> None:
         lines.extend(["", "## " + title])
@@ -142,6 +147,8 @@ def write(report: dict[str, Any], directory: str | Path) -> str:
 
 
 def table(items: list[dict[str, Any]]) -> None:
+    if not any(item.get("category") in RANKED for item in items):
+        print(NO_TRUSTWORTHY)
     print(f"{'SCORE':>5}  {'CATEGORY':<18} {'PRICE':>9} {'MILES':>8} {'LIFE':<9} SOURCE  URL")
     for item in sorted(items, key=lambda candidate: -candidate.get("score", 0))[:20]:
         lifecycle = "relisted" if item.get("relisted") else "stale" if item.get("stale") else "active"
