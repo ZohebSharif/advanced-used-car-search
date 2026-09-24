@@ -115,8 +115,16 @@ def test_http_fetch_revalidates_redirect_destination(tmp_path, monkeypatch) -> N
 
 
 def test_http_fetch_rejects_private_peer_before_reading_body(tmp_path, monkeypatch) -> None:
+    class UnreadableBodyResponse(Response):
+        def iter_bytes(self):
+            raise AssertionError("private-peer response body must not be consumed")
+
     calls = []
-    response = Response(200, body=b"must not be consumed", peer_address="127.0.0.1")
+    response = UnreadableBodyResponse(
+        200,
+        body=b"must not be consumed",
+        peer_address="127.0.0.1",
+    )
     monkeypatch.setattr(
         "lexus_hunter.tools.httpx.Client",
         lambda **kwargs: Client(response, calls, **kwargs),
