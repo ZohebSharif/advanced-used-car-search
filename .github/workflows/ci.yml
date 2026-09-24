@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  MODEL_ENABLED: "false"
+  UV_NO_PROGRESS: "1"
+
+jobs:
+  quality:
+    name: Offline quality gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: "0.11.3"
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install locked development environment
+        run: uv sync --locked --extra dev
+
+      - name: Check dependency integrity
+        run: |
+          uv lock --check
+          uv pip check
+
+      - name: Prove editable package freshness
+        run: |
+          uv run python -c 'import lexus_hunter.config; print(lexus_hunter.config.__file__); print(lexus_hunter.config.DEFAULTS["max_response_bytes"])'
+          uv run python -c 'from pathlib import Path; import lexus_hunter.config as config; path = Path(config.__file__).resolve(); package = (Path.cwd() / "package" / "lexus_hunter").resolve(); assert path.is_relative_to(package), path; assert config.DEFAULTS["max_response_bytes"] == 4000000'
+
+      - name: Run deterministic fixture scan
+        run: uv run lexus-hunter dry-run
+
+      - name: Preserve deterministic fixture reports
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: deterministic-fixture-reports-${{ github.run_id }}
+          path: |
+            reports/fixtures/latest.md
+            reports/fixtures/latest.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Run tests
+        run: uv run python -m pytest -q
+
+      - name: Run Ruff
+        run: uv run ruff check .
+
+      - name: Run mypy
+        run: uv run mypy package/lexus_hunter
+
+      - name: Check setup shell syntax
+        run: bash -n setup.sh
