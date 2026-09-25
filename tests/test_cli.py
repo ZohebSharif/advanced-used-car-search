@@ -99,7 +99,7 @@ def test_source_diagnostic_does_not_mutate_live_inventory(tmp_path, monkeypatch)
 
     config = load(
         enabled_sources=["lexus"],
-        run_duration_minutes=0.01,
+        run_duration_minutes=1,
         request_delay_seconds=0,
         model_enabled=False,
     )
@@ -111,7 +111,7 @@ def test_source_diagnostic_does_not_mutate_live_inventory(tmp_path, monkeypatch)
     arguments = Namespace(
         config=tmp_path / "config.yaml",
         headless=True,
-        duration_minutes=0.01,
+        duration_minutes=1,
     )
     report = cli.run(arguments, test=True)
     assert report["sources_searched"] == ["lexus"]
