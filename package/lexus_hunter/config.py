@@ -54,6 +54,7 @@ DEFAULTS: dict[str, Any] = {
     "request_delay_seconds": 1.5,
     "stale_after_days": 30,
     "dealer_urls": [],
+    "output_retention_days": 30,
 }
 
 
@@ -98,16 +99,34 @@ def _validate(config: dict[str, Any]) -> None:
         raise ValueError("home_zip must be a five-digit ZIP string")
     if config["target_price"] <= 0 or config["stretch_price"] < config["target_price"]:
         raise ValueError("Invalid price limits")
-    if config["run_duration_minutes"] < 0:
-        raise ValueError("Run duration must be non-negative")
+    duration = config["run_duration_minutes"]
+    if isinstance(duration, bool) or not isinstance(duration, (int, float)) or duration < 0:
+        raise ValueError("Run duration must be a non-negative number")
     radius = config.get("search_radius_miles")
     if radius is not None and (not isinstance(radius, int) or isinstance(radius, bool) or radius <= 0):
         raise ValueError("Radius must be a positive integer")
-    if set(config["enabled_sources"]) - set(SOURCES):
+    enabled = config.get("enabled_sources")
+    if not isinstance(enabled, list) or not all(isinstance(source, str) for source in enabled):
+        raise ValueError("enabled_sources must be a list of source names")
+    if len(enabled) != len(set(enabled)):
+        raise ValueError("enabled_sources must contain unique source names")
+    if set(enabled) - set(SOURCES):
         raise ValueError("Unknown source in enabled_sources")
     for key in ("model_max_calls_per_run", "model_max_input_chars", "model_max_output_tokens"):
         if not isinstance(config[key], int) or config[key] < 0:
             raise ValueError(f"{key} must be a non-negative integer")
+    for key in ("max_pages_per_source", "max_response_bytes"):
+        if not isinstance(config[key], int) or isinstance(config[key], bool) or config[key] <= 0:
+            raise ValueError(f"{key} must be a positive integer")
+    for key in ("stale_after_days", "output_retention_days"):
+        if not isinstance(config[key], int) or isinstance(config[key], bool) or config[key] < 0:
+            raise ValueError(f"{key} must be a non-negative integer")
+    delay = config["request_delay_seconds"]
+    if isinstance(delay, bool) or not isinstance(delay, (int, float)) or delay < 0:
+        raise ValueError("request_delay_seconds must be a non-negative number")
+    score = config["minimum_deal_score"]
+    if not isinstance(score, int) or isinstance(score, bool) or not 0 <= score <= 100:
+        raise ValueError("minimum_deal_score must be an integer between 0 and 100")
     if not 1 <= float(config["model_timeout_seconds"]) <= 120:
         raise ValueError("model_timeout_seconds must be between 1 and 120")
     model_url = urlparse(str(config["model_base_url"]))

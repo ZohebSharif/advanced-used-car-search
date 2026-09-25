@@ -6,7 +6,7 @@ Results are research leads. Seller/source title, history, CPO, and vehicle claim
 
 ## Setup
 
-Requirements: macOS or Linux and [`uv`](https://docs.astral.sh/uv/). The project pins Python 3.12 because its editable package path remains active after repeated syncs on supported macOS environments; `uv` can provision it.
+Requirements: macOS or Linux and [`uv`](https://docs.astral.sh/uv/). The project pins Python 3.12 and installs the local package non-editably. This avoids macOS hidden-`.pth` failures while package cache keys make Python source changes trigger a fresh install automatically; `uv` can provision the interpreter.
 
 ```sh
 cd lexus-hunter
@@ -14,7 +14,7 @@ cd lexus-hunter
 uv run lexus-hunter doctor
 ```
 
-`setup.sh` creates `.env` only when absent, installs the locked Python environment and Playwright Chromium, creates local output directories, and runs the deterministic fixture smoke test. Re-running it preserves an existing `.env`.
+`setup.sh` creates `.env` only when absent, installs the locked Python environment and package, verifies that the installed package matches the current source, installs Playwright Chromium when needed, creates local output directories, and runs the deterministic fixture smoke test. Re-running it preserves an existing `.env`.
 
 ## Optional DeepSeek model assistance
 
@@ -74,17 +74,23 @@ uv run lexus-hunter doctor
 
 A live run stops when enabled adapters finish; it does not idle until the full deadline. `test-sources` is deliberately diagnostic, not exhaustive. Status `empty` means a public search page loaded but no concrete vehicle-detail URL was identified; it is not proof that the source has no matching inventory. `blocked`, `failed`, `disabled`, and `deadline` are never reported as successful searches.
 
-The default daily source order is Lexus inventory first, explicitly configured California dealer inventory second, then the remaining enabled public sources. A custom `enabled_sources` list is dispatched in the supplied order. Dealers remain disabled and receive no browser when `dealer_urls` is empty.
+The default daily source order is Lexus L/Certified first, the explicitly configured Lexus
+Stevens Creek certified inventory second, and AutoTrader third. These are the sources that
+completed without access-control failures in the bounded live diagnostic. A custom
+`enabled_sources` list is dispatched in the supplied order. Dealers remain disabled and
+receive no browser when `dealer_urls` is empty.
 
-Facebook Marketplace, Cars.com, Craigslist, generic search-engine discovery, and dealers without explicitly configured public URLs are policy-disabled. Public access restrictions, authentication requirements, CAPTCHA, HTTP 401/403/429, private/non-global addresses, unsafe ports, and disallowed redirects fail closed without bypass or retry loops.
+Facebook Marketplace, Cars.com, Craigslist, generic search-engine discovery, and dealers
+without explicitly configured public URLs are policy-disabled. CarGurus, TrueCar, and Edmunds
+are not enabled because the current public endpoints returned HTTP 403. Public access
+restrictions, authentication requirements, CAPTCHA, HTTP 401/403/429, private/non-global
+addresses, unsafe ports, and disallowed redirects fail closed without bypass or retry loops.
 
-Lexus L/Certified discovery uses the public inventory UI: it selects ES Hybrid, the configured target year, and the smallest supported distance that covers the requested radius, then opens each visible `VIEW DETAILS` overlay. The original requested radius remains the acceptance boundary: every accepted overlay must visibly report `MILES AWAY` at or below it. Lexus supports at most 500 miles; requests above 500 are searched at 500 and explicitly reported as incomplete coverage. The scanner stores a candidate only after that detail overlay supplies model, price, and mileage evidence.
-
-To include a California dealer, add its public inventory search URL explicitly in `config.yaml`:
+The checked-in dealer URL is the public certified inventory page for Lexus Stevens Creek:
 
 ```yaml
 dealer_urls:
-  - https://www.tustinlexus.com/used-vehicles/certified-pre-owned-vehicles/
+  - https://www.lexusstevenscreek.com/certified-pre-owned.html
 ```
 
 Dealer search pages are treated only as discovery surfaces. A dealer candidate must have a concrete VIN-bearing or known vehicle-detail URL, and its detail page must visibly contain one vehicle's VIN, target model/year, price, and mileage. Login, CAPTCHA, lead forms, `CONTACT DEALER`, and transaction controls are never used.
@@ -102,6 +108,10 @@ Dealer search pages are treated only as discovery surfaces. A dealer candidate m
 
 Identity preference: VIN, then canonical detail URL, then a conservative seller/vehicle fallback. A listing records `first_seen`, `last_seen`, `last_seen_run`, `missing_runs`, `reappeared_at`, `relisted_count`, and `stale`. Only a completed authoritative live source scan may increment missing inventory. Blocked, disabled, failed, deadline, empty, and diagnostic source tests do not age listings. Reappearance resets `missing_runs` and records a relisting event while preserving price observations.
 
+Generated run logs and per-run evidence directories older than `output_retention_days` are
+removed after each command completes. The default is 30 days; `0` disables cleanup. SQLite
+history and the latest reports are never removed by this cleanup.
+
 Clean-title text is a seller/source claim, not verification. Negated language such as “no salvage title,” “not rebuilt,” and “no major accident” is kept separate from affirmative adverse evidence. Missing or unavailable VIN validation remains a manual-verification flag; invalid or mismatched VIN evidence is a hard exclusion.
 
 ## Local quality gates
@@ -114,6 +124,7 @@ uv lock --check
 uv pip check
 uv run pip-audit
 uv run python -c 'import lexus_hunter.config; print(lexus_hunter.config.__file__); print(lexus_hunter.config.DEFAULTS["max_response_bytes"])'
+uv run python -c 'from pathlib import Path; import lexus_hunter.config as config; source=(Path.cwd() / "package" / "lexus_hunter" / "config.py").resolve(); installed=Path(config.__file__).resolve(); assert installed != source; assert installed.read_bytes() == source.read_bytes()'
 uv run lexus-hunter dry-run
 uv run python -m pytest -q
 uv run ruff check .
@@ -121,9 +132,11 @@ uv run mypy package/lexus_hunter
 bash -n setup.sh
 ```
 
-The editable-package check must print a path under `package/lexus_hunter/` followed by
-`4000000`. `uv lock --check` verifies that `uv.lock` matches the project metadata, and
-`uv pip check` verifies that the installed environment has compatible dependencies.
+The installed-package checks must print a path under the active environment's
+`site-packages/lexus_hunter/`, followed by `4000000`, and prove that the installed `config.py`
+is byte-identical to the current source. `uv lock --check` verifies that `uv.lock` matches the
+project metadata, and `uv pip check` verifies that the installed environment has compatible
+dependencies.
 These are integrity checks, not vulnerability checks. `uv run pip-audit` audits the
 installed locked environment for known vulnerabilities using public advisory data.
 It may query the PyPI JSON API, requires no credentials or secrets, and never accesses

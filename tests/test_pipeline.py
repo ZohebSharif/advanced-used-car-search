@@ -6,9 +6,10 @@ from datetime import UTC, datetime
 import lexus_hunter.sources as source_module
 import pytest
 from lexus_hunter.config import ROOT, load
+from lexus_hunter.doctor import run_doctor
 from lexus_hunter.extract import extract, privacy
 from lexus_hunter.rank import evaluate, validate_vin, vin_check_digit
-from lexus_hunter.sources import ADAPTERS, Browser, _lexus_ui_radius
+from lexus_hunter.sources import ADAPTERS, Browser, CandidateRejectedError, _lexus_ui_radius
 from lexus_hunter.store import Store
 
 CONFIG = load()
@@ -91,8 +92,9 @@ def test_dedup_and_price_history(tmp_path) -> None:
 
 
 def test_policy_disabled_requires_no_browser() -> None:
+    disabled_config = dict(CONFIG, dealer_urls=[])
     for name in ("facebook", "cars", "craigslist", "search", "dealers"):
-        result = ADAPTERS[name].run(None, CONFIG, time.monotonic() + 10)
+        result = ADAPTERS[name].run(None, disabled_config, time.monotonic() + 10)
         assert result.status == "disabled"
         assert not result.listings and result.completed_searches == 0
 
@@ -178,6 +180,26 @@ def test_source_page_budget_invalidates_partial_coverage() -> None:
     assert result.status == "failed"
     assert result.complete is False
     assert browser.calls == 2
+
+
+def test_rejected_detail_does_not_prevent_later_candidates() -> None:
+    search = '<a href="/vehicle/first">first</a><a href="/vehicle/second">second</a>'
+    detail = "<html><body>2022 Lexus ES 300h</body></html>"
+    browser = SequenceBrowser(
+        [
+            search,
+            CandidateRejectedError("outside requested radius"),
+            detail,
+        ]
+    )
+    config = dict(CONFIG, request_delay_seconds=0, max_pages_per_source=3)
+
+    result = ADAPTERS["autotrader"].run(browser, config, time.monotonic() + 10)
+
+    assert result.status == "ok"
+    assert result.complete is True
+    assert result.listings == [("https://www.autotrader.com/vehicle/second", detail)]
+    assert browser.calls == 3
 
 
 class LexusBrowser:
@@ -461,5 +483,28 @@ def test_dealer_detail_without_single_vehicle_evidence_is_rejected() -> None:
         request_delay_seconds=0,
     )
     result = ADAPTERS["dealers"].run(browser, config, time.monotonic() + 10)
-    assert result.status == "failed"
+    assert result.status == "empty"
+    assert result.complete is True
     assert result.listings == []
+
+
+def test_doctor_treats_configured_dealers_as_directly_testable(tmp_path, monkeypatch) -> None:
+    class LaunchableBrowser:
+        def __init__(self, *args, **kwargs):
+            return None
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr("lexus_hunter.doctor.Browser", LaunchableBrowser)
+    checks = run_doctor(
+        load(
+            enabled_sources=["dealers"],
+            dealer_urls=["https://dealer.example/inventory"],
+        ),
+        tmp_path,
+    )
+    sources = next(check for check in checks if check.name == "sources")
+
+    assert sources.status == "ok"
+    assert "directly testable=dealers" in sources.detail

@@ -46,6 +46,10 @@ MILEAGE = re.compile(r"\b\d[\d,]*\s+(?:miles?|mi)\b", re.IGNORECASE)
 LEXUS_UI_RADII = (10, 25, 50, 150, 200, 500)
 
 
+class CandidateRejectedError(ValueError):
+    """A discovered detail page is not an acceptable target listing."""
+
+
 def _lexus_ui_radius(requested_radius: int) -> int:
     capped_radius = min(requested_radius, LEXUS_UI_RADII[-1])
     return next(radius for radius in LEXUS_UI_RADII if radius >= capped_radius)
@@ -155,7 +159,7 @@ class Browser:
             close.first.click()
         link = self.page.locator(f'a[href*="{vin}"]')
         if not link.count():
-            raise ValueError("Lexus detail link is no longer present in visible results")
+            raise CandidateRejectedError("Lexus detail link is no longer present in visible results")
         link.last.click()
         overlay = self.page.locator('[aria-label="VehicleDetails"]')
         overlay.wait_for(state="visible", timeout=timeout)
@@ -173,14 +177,16 @@ class Browser:
             and PRICE.search(detail_text)
             and MILEAGE.search(detail_text)
         ):
-            raise ValueError("Lexus detail overlay lacked year, model, price, or mileage evidence")
+            raise CandidateRejectedError(
+                "Lexus detail overlay lacked year, model, price, or mileage evidence"
+            )
         distance = re.search(r"([\d,.]+)\s+MILES AWAY", detail_text, re.IGNORECASE)
         if self._lexus_radius is not None:
             if distance is None:
-                raise ValueError("Lexus detail overlay lacked distance evidence")
+                raise CandidateRejectedError("Lexus detail overlay lacked distance evidence")
             miles_away = float(distance.group(1).replace(",", ""))
             if miles_away > self._lexus_radius:
-                raise ValueError("Lexus detail overlay exceeded the applied search radius")
+                raise CandidateRejectedError("Lexus detail overlay exceeded the applied search radius")
 
     def _apply_lexus_filter(
         self,
@@ -407,6 +413,9 @@ class Adapter:
                         result.status, result.detail = "blocked", str(exc)
                         result.complete = False
                         return result
+                    except CandidateRejectedError as exc:
+                        result.detail += f"; rejected detail ({exc})"
+                        continue
                     except (UnsafeUrlError, ValueError) as exc:
                         result.status = "failed"
                         result.detail += f"; rejected detail ({exc})"
@@ -616,7 +625,9 @@ class DealerAdapter(TemplateAdapter):
             and MILEAGE.search(text)
             and (VIN.search(text) or VIN.search(url))
         ):
-            raise ValueError("dealer detail lacked one-vehicle VIN, model, year, price, or mileage evidence")
+            raise CandidateRejectedError(
+                "dealer detail lacked one-vehicle VIN, model, year, price, or mileage evidence"
+            )
         return html
 
 

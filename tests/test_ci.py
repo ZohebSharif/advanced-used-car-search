@@ -41,7 +41,8 @@ def test_ci_runs_only_offline_scanner_and_required_quality_gates() -> None:
         "print(lexus_hunter.config.__file__); "
         'print(lexus_hunter.config.DEFAULTS["max_response_bytes"])\''
     ) in commands
-    assert 'path.is_relative_to(package)' in commands
+    assert "installed != source" in commands
+    assert "installed.read_bytes() == source.read_bytes()" in commands
     assert 'config.DEFAULTS["max_response_bytes"] == 4000000' in commands
     assert "uv run lexus-hunter dry-run" in commands
     assert "uv run python -m pytest -q" in commands
@@ -65,6 +66,20 @@ def test_advisory_audit_is_a_locked_development_dependency() -> None:
 
     assert "pip-audit>=2.10,<3" in development_dependencies
     assert any(package["name"] == "pip-audit" for package in lock["package"])
+
+
+def test_local_package_is_noneditable_with_source_freshness_tracking() -> None:
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text())
+    package = tomllib.loads((ROOT / "package" / "pyproject.toml").read_text())
+
+    assert project["tool"]["uv"]["sources"]["lexus-hunter"] == {
+        "path": "package",
+        "editable": False,
+    }
+    assert package["tool"]["uv"]["cache-keys"] == [
+        {"file": "pyproject.toml"},
+        {"file": "lexus_hunter/**/*.py"},
+    ]
 
 def test_ci_pins_actions_and_uploads_only_fixture_reports() -> None:
     workflow, _ = load_workflow()

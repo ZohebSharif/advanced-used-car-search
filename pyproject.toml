@@ -18,7 +18,7 @@ dev = [
 package = false
 
 [tool.uv.sources]
-lexus-hunter = { path = "package", editable = true }
+lexus-hunter = { path = "package", editable = false }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

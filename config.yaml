@@ -1,5 +1,5 @@
 home_zip: '95112'
-search_radius_miles: null
+search_radius_miles: 250
 state: CA
 target_price: 30000
 stretch_price: 32000
@@ -8,8 +8,9 @@ allow_fallback_years: false
 preferred_exterior_colors: [black, caviar, obsidian]
 preferred_interior_colors: [palomino]
 max_mileage: 60000
-enabled_sources: [lexus, dealers, facebook, autotrader, cars, cargurus, truecar, edmunds, craigslist, search]
-dealer_urls: []
+enabled_sources: [lexus, dealers, autotrader]
+dealer_urls:
+  - https://www.lexusstevenscreek.com/certified-pre-owned.html
 run_duration_minutes: 45
 minimum_deal_score: 65
 model_enabled: false
@@ -19,7 +20,8 @@ model_max_calls_per_run: 3
 model_max_input_chars: 12000
 model_timeout_seconds: 20
 model_max_output_tokens: 800
-max_pages_per_source: 3
+max_pages_per_source: 4
 max_response_bytes: 4000000
 request_delay_seconds: 1.5
 stale_after_days: 30
+output_retention_days: 30

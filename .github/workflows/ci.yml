@@ -48,10 +48,10 @@ jobs:
       - name: Audit dependencies for known vulnerabilities
         run: uv run pip-audit
 
-      - name: Prove editable package freshness
+      - name: Prove installed package freshness
         run: |
           uv run python -c 'import lexus_hunter.config; print(lexus_hunter.config.__file__); print(lexus_hunter.config.DEFAULTS["max_response_bytes"])'
-          uv run python -c 'from pathlib import Path; import lexus_hunter.config as config; path = Path(config.__file__).resolve(); package = (Path.cwd() / "package" / "lexus_hunter").resolve(); assert path.is_relative_to(package), path; assert config.DEFAULTS["max_response_bytes"] == 4000000'
+          uv run python -c 'from pathlib import Path; import lexus_hunter.config as config; source = (Path.cwd() / "package" / "lexus_hunter" / "config.py").resolve(); installed = Path(config.__file__).resolve(); assert installed != source; assert installed.read_bytes() == source.read_bytes(); assert config.DEFAULTS["max_response_bytes"] == 4000000'
 
       - name: Run deterministic fixture scan
         run: uv run lexus-hunter dry-run

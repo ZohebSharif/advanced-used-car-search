@@ -85,6 +85,10 @@ def write(report: dict[str, Any], directory: str | Path) -> str:
             f"excluded: {report['excluded']} | ranked: {report['ranked']} | "
             f"relisted: {len(report['relisted_listings'])} | stale: {len(report['stale_listings'])}"
         ),
+        (
+            f"Output cleanup: removed={report.get('output_cleanup', {}).get('removed', 0)}; "
+            f"errors={', '.join(report.get('output_cleanup', {}).get('errors', [])) or 'none'}"
+        ),
     ]
     if report["trustworthy_listing_message"]:
         lines.extend(["", f"**{report['trustworthy_listing_message']}**"])

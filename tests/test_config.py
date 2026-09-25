@@ -22,6 +22,27 @@ def test_explicit_source_order_is_preserved() -> None:
     assert load(enabled_sources=order)["enabled_sources"] == order
 
 
+def test_duplicate_sources_are_rejected() -> None:
+    with pytest.raises(ValueError, match="unique"):
+        load(enabled_sources=["lexus", "lexus"])
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("max_pages_per_source", 0),
+        ("max_response_bytes", 0),
+        ("request_delay_seconds", -0.1),
+        ("stale_after_days", -1),
+        ("output_retention_days", -1),
+        ("minimum_deal_score", 101),
+    ],
+)
+def test_bounded_runtime_settings_are_validated(key: str, value: object) -> None:
+    with pytest.raises(ValueError):
+        load(**{key: value})
+
+
 @pytest.mark.parametrize(
     "url",
     [

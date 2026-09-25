@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from argparse import Namespace
 from datetime import UTC, datetime
 
@@ -271,7 +272,8 @@ def test_default_source_priority_drives_live_and_diagnostic_dispatch(
 
         assert dispatch_order == config["enabled_sources"]
         assert dispatch_order[:2] == ["lexus", "dealers"]
-        assert dealer_browsers == [None]
+        assert len(dealer_browsers) == 1
+        assert isinstance(dealer_browsers[0], FakeBrowser)
 
 
 def test_fixture_run_writes_only_fixture_report(tmp_path, monkeypatch) -> None:
@@ -361,3 +363,38 @@ def test_lexus_query_detail_candidate_is_persisted_with_evidence(tmp_path, monke
     assert len(saved) == 1
     assert saved[0]["url"] == canonical_url(adapter.url)
     assert (tmp_path / "evidence/1/lexus-1.html").exists()
+
+
+def test_generated_output_retention_removes_only_expired_run_artifacts(tmp_path) -> None:
+    old_log = tmp_path / "logs/live-run-1.jsonl"
+    recent_log = tmp_path / "logs/diagnostic-run-2.jsonl"
+    unrelated_log = tmp_path / "logs/manual-run-notes.jsonl"
+    old_live_evidence = tmp_path / "evidence/1"
+    old_diagnostic_evidence = tmp_path / "evidence/diagnostic/2"
+    recent_fixture_evidence = tmp_path / "evidence/fixtures/3"
+    report = tmp_path / "reports/latest.json"
+
+    for file in (old_log, recent_log, unrelated_log, report):
+        file.parent.mkdir(parents=True, exist_ok=True)
+        file.write_text("data", encoding="utf-8")
+    for directory in (old_live_evidence, old_diagnostic_evidence, recent_fixture_evidence):
+        directory.mkdir(parents=True)
+        (directory / "page.html").write_text("evidence", encoding="utf-8")
+
+    old_time = 1_000_000.0
+    current_time = old_time + 31 * 86_400
+    for path in (old_log, unrelated_log, old_live_evidence, old_diagnostic_evidence):
+        os.utime(path, (old_time, old_time))
+    for path in (recent_log, recent_fixture_evidence):
+        os.utime(path, (current_time, current_time))
+
+    result = cli.prune_generated_outputs(tmp_path, retention_days=30, now_epoch=current_time)
+
+    assert result == {"removed": 3, "errors": []}
+    assert not old_log.exists()
+    assert not old_live_evidence.exists()
+    assert not old_diagnostic_evidence.exists()
+    assert recent_log.exists()
+    assert recent_fixture_evidence.exists()
+    assert unrelated_log.exists()
+    assert report.exists()

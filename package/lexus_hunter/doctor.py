@@ -53,7 +53,11 @@ def run_doctor(config: dict[str, Any], root: Path, *, check_model: bool = False)
     except Exception as exc:
         checks.append(Check("browser", "fail", f"{type(exc).__name__}: {exc}", True))
     enabled = list(config["enabled_sources"])
-    active = [name for name in enabled if name not in POLICY_RESTRICTED]
+    active = [
+        name
+        for name in enabled
+        if name not in POLICY_RESTRICTED or (name == "dealers" and bool(config.get("dealer_urls")))
+    ]
     checks.append(
         Check(
             "sources",

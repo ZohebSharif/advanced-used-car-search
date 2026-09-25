@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -28,6 +29,51 @@ def log(path: Path, **data: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as file:
         file.write(json.dumps({"time": now(), **data}, sort_keys=True) + "\n")
+
+
+def prune_generated_outputs(
+    root: Path,
+    *,
+    retention_days: int,
+    now_epoch: float | None = None,
+) -> dict[str, Any]:
+    if retention_days == 0:
+        return {"removed": 0, "errors": []}
+    cutoff = (time.time() if now_epoch is None else now_epoch) - retention_days * 86_400
+    candidates: list[Path] = []
+    for mode in ("live", "diagnostic", "fixture"):
+        prefix = f"{mode}-run-"
+        candidates.extend(
+            path
+            for path in (root / "logs").glob(f"{prefix}*.jsonl")
+            if path.stem.removeprefix(prefix).isdigit()
+        )
+    for directory in (
+        root / "evidence",
+        root / "evidence" / "diagnostic",
+        root / "evidence" / "fixtures",
+    ):
+        if directory.is_dir():
+            candidates.extend(path for path in directory.iterdir() if path.name.isdigit())
+
+    removed = 0
+    errors: list[str] = []
+    for path in candidates:
+        if path.is_symlink():
+            continue
+        try:
+            if path.stat().st_mtime >= cutoff:
+                continue
+            if path.is_dir():
+                shutil.rmtree(path)
+            elif path.is_file():
+                path.unlink()
+            else:
+                continue
+            removed += 1
+        except OSError:
+            errors.append(str(path.relative_to(root)))
+    return {"removed": removed, "errors": sorted(errors)}
 
 
 def run(args: argparse.Namespace, *, dry: bool = False, test: bool = False) -> dict[str, Any]:
@@ -193,6 +239,10 @@ def run(args: argparse.Namespace, *, dry: bool = False, test: bool = False) -> d
             browser.close()
         finished = now()
         model_usage = model_budget.summary()
+        output_cleanup = prune_generated_outputs(
+            ROOT,
+            retention_days=int(config["output_retention_days"]),
+        )
         summary = {
             "run_id": run_id,
             "mode": "dry-run fixtures" if dry else "source diagnostic" if test else "live browser",
@@ -203,6 +253,7 @@ def run(args: argparse.Namespace, *, dry: bool = False, test: bool = False) -> d
             "model_calls": model_usage["calls"],
             "model_usage": model_usage,
             **counts,
+            "output_cleanup": output_cleanup,
         }
         report = build(summary, list(current.values()), db.events(run_id), changes)
         db.finish(run_id, finished, summary)

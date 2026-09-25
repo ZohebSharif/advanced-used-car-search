@@ -214,21 +214,33 @@ def extract(
         ),
     }
     provenance: dict[str, dict[str, Any]] = {}
-    structured_fields = {
-        "year": "vehicleModelDate",
-        "make": "brand",
-        "model": "model",
-        "trim": "vehicleConfiguration",
-        "price": "offers.price",
-        "mileage": "mileageFromOdometer",
-        "exterior": "color",
-        "interior": "vehicleInteriorColor",
-        "vin": "vehicleIdentificationNumber",
-    }
+    structured_fields: dict[str, str] = {}
+    for key, field_name in (
+        ("year", "vehicleModelDate"),
+        ("make", "brand"),
+        ("model", "model"),
+        ("trim", "vehicleConfiguration"),
+        ("mileage", "mileageFromOdometer"),
+        ("vin", "vehicleIdentificationNumber"),
+    ):
+        if structured.get(field_name) not in (None, ""):
+            structured_fields[key] = field_name
+    if offer.get("price") not in (None, ""):
+        structured_fields["price"] = "offers.price"
+    elif structured.get("price") not in (None, ""):
+        structured_fields["price"] = "price"
+    if structured.get("color") not in (None, ""):
+        structured_fields["exterior"] = "color"
+    elif structured.get("vehicleColor") not in (None, ""):
+        structured_fields["exterior"] = "vehicleColor"
+    if structured.get("vehicleInteriorColor") not in (None, ""):
+        structured_fields["interior"] = "vehicleInteriorColor"
+    if location:
+        structured_fields["location"] = "address"
     for key, value in deterministic.items():
         if value in (None, "", False):
             provenance[key] = {"state": "unknown", "evidence": None}
-        elif key in structured_fields and structured.get(structured_fields[key].split(".")[0]) is not None:
+        elif key in structured_fields:
             provenance[key] = {"state": "structured_visible", "evidence": structured_fields[key]}
         else:
             provenance[key] = {"state": "visible_text", "evidence": str(value)[:180]}

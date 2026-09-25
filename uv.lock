@@ -524,7 +524,7 @@ wheels = [
 [[package]]
 name = "lexus-hunter"
 version = "0.1.0"
-source = { editable = "package" }
+source = { directory = "package" }
 dependencies = [
     { name = "beautifulsoup4" },
     { name = "httpx" },
@@ -565,7 +565,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "lexus-hunter", editable = "package" },
+    { name = "lexus-hunter", directory = "package" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.18,<2" },
     { name = "pip-audit", marker = "extra == 'dev'", specifier = ">=2.10,<3" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8,<10" },

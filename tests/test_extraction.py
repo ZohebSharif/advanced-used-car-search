@@ -48,6 +48,27 @@ def test_clean_history_is_not_clean_title() -> None:
     assert evaluate(item, CONFIG, vin_status="missing")["category"] == "avoid"
 
 
+def test_visible_price_is_not_mislabeled_as_structured_evidence() -> None:
+    html = """
+    <script type="application/ld+json">
+      {
+        "@type": "Vehicle",
+        "vehicleModelDate": "2022",
+        "brand": {"name": "Lexus"},
+        "model": "ES 300h",
+        "offers": {"availability": "https://schema.org/InStock"}
+      }
+    </script>
+    <h1>2022 Lexus ES 300h</h1>
+    <p>$29,000 · 30,000 miles · San Jose, CA 95112</p>
+    """
+
+    item = extract(html, "https://example.com/vehicle/structured", "fixture", CONFIG, use_model=False)
+
+    assert item["price"] == 29_000
+    assert item["provenance"]["price"]["state"] == "visible_text"
+
+
 def test_lexus_overlay_text_provides_vehicle_identity() -> None:
     html = """
     <html><body>

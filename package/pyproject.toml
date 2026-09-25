@@ -19,3 +19,9 @@ dependencies = [
 
 [project.scripts]
 lexus-hunter = "lexus_hunter.cli:main"
+
+[tool.uv]
+cache-keys = [
+  { file = "pyproject.toml" },
+  { file = "lexus_hunter/**/*.py" },
+]
