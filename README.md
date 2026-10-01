@@ -214,10 +214,8 @@ uv run mypy package/advanced_used_car_search
 bash -n setup.sh
 ```
 
-The release checks exercised the installed offline setup and Markdown/JSON report
-commands: 128 tests passed, one opt-in provider test was skipped, Ruff and mypy
-passed, and the dependency audit found no known vulnerabilities. Live sources and
-paid model requests were not exercised in this release pass.
+The offline demo's location fallback stops at sentence boundaries, so preceding
+mileage text is not included in the city shown in reports.
 
 The installed-package checks must print a path under the active environment's
 `site-packages/advanced_used_car_search/`, followed by `4000000`, and prove that the installed `config.py`
@@ -250,3 +248,9 @@ The test suite validates workflow safety boundaries, including triggers, permiss
 action pinning, prohibited live commands, and the fixture-only artifact allowlist.
 
 The offline suite covers extraction, negation-aware title evidence, deterministic hard gates, model JSON validation and call caps, SSRF controls, pre-request non-public DNS rejection, detail-URL filtering, deduplication, price history, schema migration, relisting/stale transitions, diagnostic-run isolation, and report provenance. The direct HTTP tool additionally validates the connected response peer; Playwright cannot independently verify Chromium's connected peer after its pre-request DNS check. The DeepSeek network test remains opt-in so ordinary tests never consume API quota.
+
+## License
+
+No license has been granted in this repository. Public visibility alone does not
+grant permission to reuse, modify, or redistribute the code beyond applicable law
+and GitHub's terms. Contact the owner for permission.

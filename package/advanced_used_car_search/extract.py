@@ -195,7 +195,7 @@ def extract(
         "trim": structured.get("vehicleConfiguration"),
         "price": _int(raw_price),
         "fees": _int(field(r"\b(?:dealer|documentation|doc) fees?\s*[:\-]?\s*\$([\d,]+)")),
-        "location": privacy(_first(location, field(r"\b([A-Za-z .'-]{2,45},\s*CA(?:\s*\d{5})?)\b")) or ""),
+        "location": privacy(_first(location, field(r"\b([A-Za-z '-]{2,45},\s*CA(?:\s*\d{5})?)\b")) or ""),
         "mileage": _int(raw_miles),
         "exterior": _first(structured.get("color"), structured.get("vehicleColor"), exterior),
         "interior": _first(structured.get("vehicleInteriorColor"), interior),
