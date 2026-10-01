@@ -70,7 +70,7 @@ def write(report: dict[str, Any], directory: str | Path) -> str:
     )
     usage = report.get("model_usage") or {}
     lines = [
-        "# Lexus Hunter — latest run",
+        "# Advanced Used Car Search — latest run",
         "",
         f"Run: {report['started']} to {report['finished']} ({report['duration_seconds']:.1f}s)",
         f"Mode: {report['mode']}",

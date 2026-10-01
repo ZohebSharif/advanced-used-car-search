@@ -3,10 +3,10 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
-from lexus_hunter.config import load
-from lexus_hunter.security import UnsafeUrlError, URLPolicy
-from lexus_hunter.store import Store
-from lexus_hunter.tools import AgentTools
+from advanced_used_car_search.config import load
+from advanced_used_car_search.security import UnsafeUrlError, URLPolicy
+from advanced_used_car_search.store import Store
+from advanced_used_car_search.tools import AgentTools
 
 
 class Response:
@@ -84,7 +84,7 @@ def test_http_fetch_blocks_access_restrictions_without_retry(
     calls = []
     response = Response(status_code)
     monkeypatch.setattr(
-        "lexus_hunter.tools.httpx.Client",
+        "advanced_used_car_search.tools.httpx.Client",
         lambda **kwargs: Client(response, calls, **kwargs),
     )
 
@@ -102,7 +102,7 @@ def test_http_fetch_revalidates_redirect_destination(tmp_path, monkeypatch) -> N
     calls = []
     response = Response(302, location="https://evil.example/vehicle/1")
     monkeypatch.setattr(
-        "lexus_hunter.tools.httpx.Client",
+        "advanced_used_car_search.tools.httpx.Client",
         lambda **kwargs: Client(response, calls, **kwargs),
     )
 
@@ -126,7 +126,7 @@ def test_http_fetch_rejects_private_peer_before_reading_body(tmp_path, monkeypat
         peer_address="127.0.0.1",
     )
     monkeypatch.setattr(
-        "lexus_hunter.tools.httpx.Client",
+        "advanced_used_car_search.tools.httpx.Client",
         lambda **kwargs: Client(response, calls, **kwargs),
     )
 
@@ -153,7 +153,7 @@ def test_http_fetch_blocks_access_control_pages(tmp_path, monkeypatch, signal: s
     calls = []
     response = Response(200, body=f"<html>{signal}</html>".encode())
     monkeypatch.setattr(
-        "lexus_hunter.tools.httpx.Client",
+        "advanced_used_car_search.tools.httpx.Client",
         lambda **kwargs: Client(response, calls, **kwargs),
     )
 

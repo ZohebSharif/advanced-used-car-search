@@ -3,10 +3,10 @@ from __future__ import annotations
 import sys
 from types import SimpleNamespace
 
-import lexus_hunter.sources as source_module
+import advanced_used_car_search.sources as source_module
 import pytest
-from lexus_hunter.security import UnsafeUrlError, URLPolicy, canonical_url
-from lexus_hunter.sources import Browser
+from advanced_used_car_search.security import UnsafeUrlError, URLPolicy, canonical_url
+from advanced_used_car_search.sources import Browser
 
 
 def resolver_for(address: str):

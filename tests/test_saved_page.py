@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lexus_hunter.config import load
-from lexus_hunter.security import is_vehicle_detail_url
-from lexus_hunter.sources import ADAPTERS
+from advanced_used_car_search.config import load
+from advanced_used_car_search.security import is_vehicle_detail_url
+from advanced_used_car_search.sources import ADAPTERS
 
 SAVED = Path(__file__).parent / "fixtures" / "saved_cargurus_search_2026-09-23.html"
 BASE = "https://www.cargurus.com/Cars/l-Used-2022-Lexus-ES-Hybrid-c31882?zip=95112"

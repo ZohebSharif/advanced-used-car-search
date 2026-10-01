@@ -37,23 +37,23 @@ def test_ci_runs_only_offline_scanner_and_required_quality_gates() -> None:
 
     assert "uv sync --locked --extra dev" in commands
     assert (
-        "uv run python -c 'import lexus_hunter.config; "
-        "print(lexus_hunter.config.__file__); "
-        'print(lexus_hunter.config.DEFAULTS["max_response_bytes"])\''
+        "uv run python -c 'import advanced_used_car_search.config; "
+        "print(advanced_used_car_search.config.__file__); "
+        'print(advanced_used_car_search.config.DEFAULTS["max_response_bytes"])\''
     ) in commands
     assert "installed != source" in commands
     assert "installed.read_bytes() == source.read_bytes()" in commands
     assert 'config.DEFAULTS["max_response_bytes"] == 4000000' in commands
-    assert "uv run lexus-hunter dry-run" in commands
+    assert "uv run advanced-used-car-search dry-run" in commands
     assert "uv run python -m pytest -q" in commands
     assert "uv run ruff check ." in commands
-    assert "uv run mypy package/lexus_hunter" in commands
+    assert "uv run mypy package/advanced_used_car_search" in commands
     assert "bash -n setup.sh" in commands
     assert "uv lock --check" in commands
     assert "uv pip check" in commands
     assert "uv run pip-audit" in commands
 
-    assert not re.search(r"\buv run lexus-hunter (?:run|test-sources)\b", commands)
+    assert not re.search(r"\buv run advanced-used-car-search (?:run|test-sources)\b", commands)
     assert "./setup.sh" not in commands
     assert "${{ secrets." not in text
     assert "DEEPSEEK_API_KEY" not in text
@@ -72,14 +72,15 @@ def test_local_package_is_noneditable_with_source_freshness_tracking() -> None:
     project = tomllib.loads((ROOT / "pyproject.toml").read_text())
     package = tomllib.loads((ROOT / "package" / "pyproject.toml").read_text())
 
-    assert project["tool"]["uv"]["sources"]["lexus-hunter"] == {
+    assert project["tool"]["uv"]["sources"]["advanced-used-car-search"] == {
         "path": "package",
         "editable": False,
     }
     assert package["tool"]["uv"]["cache-keys"] == [
         {"file": "pyproject.toml"},
-        {"file": "lexus_hunter/**/*.py"},
+        {"file": "advanced_used_car_search/**/*.py"},
     ]
+
 
 def test_ci_pins_actions_and_uploads_only_fixture_reports() -> None:
     workflow, _ = load_workflow()

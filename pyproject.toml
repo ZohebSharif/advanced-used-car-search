@@ -1,9 +1,9 @@
 [project]
-name = "lexus-hunter-workspace"
+name = "advanced-used-car-search-workspace"
 version = "0.1.0"
-description = "Local development environment for lexus-hunter"
+description = "Local development environment for advanced-used-car-search"
 requires-python = ">=3.11"
-dependencies = ["lexus-hunter"]
+dependencies = ["advanced-used-car-search"]
 
 [project.optional-dependencies]
 dev = [
@@ -18,7 +18,7 @@ dev = [
 package = false
 
 [tool.uv.sources]
-lexus-hunter = { path = "package", editable = false }
+advanced-used-car-search = { path = "package", editable = false }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

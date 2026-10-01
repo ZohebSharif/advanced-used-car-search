@@ -4,9 +4,9 @@ import json
 import os
 
 import pytest
-from lexus_hunter.config import load
-from lexus_hunter.model import DeepSeekClient
-from lexus_hunter.report import build, table, write
+from advanced_used_car_search.config import load
+from advanced_used_car_search.model import DeepSeekClient
+from advanced_used_car_search.report import build, table, write
 
 
 def candidate():

@@ -3,7 +3,7 @@ requires = ["flit_core>=3.11,<4"]
 build-backend = "flit_core.buildapi"
 
 [project]
-name = "lexus-hunter"
+name = "advanced-used-car-search"
 version = "0.1.0"
 description = "Read-only California Lexus ES 300h listing research CLI"
 requires-python = ">=3.11"
@@ -18,10 +18,10 @@ dependencies = [
 ]
 
 [project.scripts]
-lexus-hunter = "lexus_hunter.cli:main"
+advanced-used-car-search = "advanced_used_car_search.cli:main"
 
 [tool.uv]
 cache-keys = [
   { file = "pyproject.toml" },
-  { file = "lexus_hunter/**/*.py" },
+  { file = "advanced_used_car_search/**/*.py" },
 ]

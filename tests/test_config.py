@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 import yaml
-from lexus_hunter.config import load
+from advanced_used_car_search.config import load
 
 
 def test_mutable_defaults_are_isolated_between_loads(tmp_path) -> None:

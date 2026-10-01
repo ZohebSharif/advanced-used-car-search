@@ -5,8 +5,8 @@ from types import SimpleNamespace
 
 import httpx
 import pytest
-from lexus_hunter.config import load
-from lexus_hunter.model import DeepSeekClient, ModelBudget
+from advanced_used_car_search.config import load
+from advanced_used_car_search.model import DeepSeekClient, ModelBudget
 from openai import APIStatusError, AuthenticationError, PermissionDeniedError, RateLimitError
 
 
@@ -102,7 +102,7 @@ def test_deepseek_transport_rejects_redirects_and_environment_proxies(monkeypatc
         options.update(kwargs)
         return transport
 
-    monkeypatch.setattr("lexus_hunter.model.httpx.Client", transport_factory)
+    monkeypatch.setattr("advanced_used_car_search.model.httpx.Client", transport_factory)
     factory = FakeFactory([response({"trim": "Luxury"})])
     suggestion, event = DeepSeekClient(enabled_config(), client_factory=factory).extract(
         "visible", "https://example.com/vehicle/1"

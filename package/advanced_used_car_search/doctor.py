@@ -29,11 +29,11 @@ def _writable(directory: Path) -> Check:
 
 
 def run_doctor(config: dict[str, Any], root: Path, *, check_model: bool = False) -> list[Check]:
-    checks: list[Check] = [Check("configuration", "ok", "config.yaml is valid")]
+    checks: list[Check] = [Check("configuration", "ok", f"valid; data directory: {root}")]
     for directory in (root / "logs", root / "evidence", root / "reports"):
         checks.append(_writable(directory))
     try:
-        store = Store(root / "hunter.sqlite3")
+        store = Store(root / "listings.sqlite3")
         version = store.schema_version()
         store.close()
         checks.append(
@@ -51,7 +51,15 @@ def run_doctor(config: dict[str, Any], root: Path, *, check_model: bool = False)
         browser.close()
         checks.append(Check("browser", "ok", "Playwright Chromium launches"))
     except Exception as exc:
-        checks.append(Check("browser", "fail", f"{type(exc).__name__}: {exc}", True))
+        checks.append(
+            Check(
+                "browser", "fail",
+                f"{type(exc).__name__}: {exc}\n"
+                "  Install with `uv run playwright install chromium`, then rerun doctor. "
+                "The offline `dry-run` command does not need a browser.",
+                True,
+            )
+        )
     enabled = list(config["enabled_sources"])
     active = [
         name
@@ -70,7 +78,12 @@ def run_doctor(config: dict[str, Any], root: Path, *, check_model: bool = False)
     if check_model:
         if not model.available:
             checks.append(
-                Check("deepseek", "fail", "explicit check requested but model/key is unavailable", True)
+                Check(
+                    "deepseek", "fail",
+                    "Set MODEL_ENABLED=true and DEEPSEEK_API_KEY in .env for this optional check; "
+                    "ordinary dry-run needs neither.",
+                    True,
+                )
             )
         else:
             suggestion, event = model.extract(

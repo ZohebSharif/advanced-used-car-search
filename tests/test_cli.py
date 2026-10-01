@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 import os
+import shutil
 from argparse import Namespace
 from datetime import UTC, datetime
 
-import lexus_hunter.cli as cli
-from lexus_hunter.config import load
-from lexus_hunter.security import canonical_url
-from lexus_hunter.sources import Result
-from lexus_hunter.store import Store
+import advanced_used_car_search.cli as cli
+import pytest
+from advanced_used_car_search.config import load
+from advanced_used_car_search.security import canonical_url
+from advanced_used_car_search.sources import Result
+from advanced_used_car_search.store import Store
 
 
 class EmptyAdapter:
@@ -80,7 +82,7 @@ def listing():
 
 
 def test_source_diagnostic_does_not_mutate_live_inventory(tmp_path, monkeypatch) -> None:
-    database = Store(tmp_path / "hunter.sqlite3")
+    database = Store(tmp_path / "listings.sqlite3")
     first_run = database.start(datetime.now(UTC).isoformat())
     database.save(listing(), first_run)
     before = tuple(
@@ -120,7 +122,7 @@ def test_source_diagnostic_does_not_mutate_live_inventory(tmp_path, monkeypatch)
     assert (tmp_path / "reports/diagnostic/latest.json").exists()
     assert not (tmp_path / "reports/latest.json").exists()
 
-    database = Store(tmp_path / "hunter.sqlite3")
+    database = Store(tmp_path / "listings.sqlite3")
     after = tuple(
         database.db.execute(
             "SELECT observed,last_seen,last_seen_run,missing_runs,stale FROM listings"
@@ -276,18 +278,38 @@ def test_default_source_priority_drives_live_and_diagnostic_dispatch(
         assert isinstance(dealer_browsers[0], FakeBrowser)
 
 
-def test_fixture_run_writes_only_fixture_report(tmp_path, monkeypatch) -> None:
-    config = load(request_delay_seconds=0, model_enabled=False)
+def test_fixture_run_stays_offline_and_isolated_when_model_is_configured(tmp_path, monkeypatch) -> None:
+    config = load(request_delay_seconds=0, model_enabled=True)
+    shutil.copytree(cli.ROOT / "fixtures", tmp_path / "fixtures")
     monkeypatch.setattr(cli, "ROOT", tmp_path)
     monkeypatch.setattr(cli, "load", lambda *args, **kwargs: config)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Offline fixtures must not open a browser or call the model")
+
+    monkeypatch.setattr(cli, "Browser", forbidden)
+    monkeypatch.setattr(cli.DeepSeekClient, "extract", forbidden)
     report = cli.run(Namespace(config=tmp_path / "config.yaml", model=False), dry=True)
     assert report["mode"] == "dry-run fixtures"
+    assert report["discovered"] == 4
+    assert report["model_calls"] == 0
     assert (tmp_path / "reports/fixtures/latest.json").exists()
     assert not (tmp_path / "reports/latest.json").exists()
+    assert not (tmp_path / "listings.sqlite3").exists()
+
+
+def test_missing_fixtures_do_not_create_an_empty_success_report(tmp_path, monkeypatch) -> None:
+    config = load(model_enabled=False)
+    monkeypatch.setattr(cli, "ROOT", tmp_path)
+    monkeypatch.setattr(cli, "load", lambda *args, **kwargs: config)
+    with pytest.raises(ValueError, match="No HTML fixtures"):
+        cli.run(Namespace(config=tmp_path / "config.yaml", model=False), dry=True)
+    assert not (tmp_path / "fixtures.sqlite3").exists()
+    assert not (tmp_path / "reports").exists()
 
 
 def test_complete_empty_live_source_does_not_age_inventory(tmp_path, monkeypatch) -> None:
-    database = Store(tmp_path / "hunter.sqlite3")
+    database = Store(tmp_path / "listings.sqlite3")
     first_run = database.start(datetime.now(UTC).isoformat())
     database.save(listing(), first_run)
     database.close()
@@ -308,13 +330,13 @@ def test_complete_empty_live_source_does_not_age_inventory(tmp_path, monkeypatch
     assert report["mode"] == "live browser"
     assert report["sources_searched"] == ["autotrader"]
 
-    database = Store(tmp_path / "hunter.sqlite3")
+    database = Store(tmp_path / "listings.sqlite3")
     assert database.listings()[0]["missing_runs"] == 0
     database.close()
 
 
 def test_ingestion_failure_does_not_age_inventory(tmp_path, monkeypatch) -> None:
-    database = Store(tmp_path / "hunter.sqlite3")
+    database = Store(tmp_path / "listings.sqlite3")
     first_run = database.start(datetime.now(UTC).isoformat())
     database.save(listing(), first_run)
     database.close()
@@ -334,7 +356,7 @@ def test_ingestion_failure_does_not_age_inventory(tmp_path, monkeypatch) -> None
     )
     assert report["sources_searched"] == []
 
-    database = Store(tmp_path / "hunter.sqlite3")
+    database = Store(tmp_path / "listings.sqlite3")
     assert database.listings()[0]["missing_runs"] == 0
     assert database.events(report["run_id"])[-1]["status"] == "failed"
     database.close()
@@ -356,7 +378,7 @@ def test_lexus_query_detail_candidate_is_persisted_with_evidence(tmp_path, monke
         Namespace(config=tmp_path / "config.yaml", headless=True, duration_minutes=0.01)
     )
 
-    database = Store(tmp_path / "hunter.sqlite3")
+    database = Store(tmp_path / "listings.sqlite3")
     saved = database.listings()
     database.close()
     assert report["discovered"] == 1

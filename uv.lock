@@ -7,6 +7,59 @@ resolution-markers = [
 ]
 
 [[package]]
+name = "advanced-used-car-search"
+version = "0.1.0"
+source = { directory = "package" }
+dependencies = [
+    { name = "beautifulsoup4" },
+    { name = "httpx" },
+    { name = "openai" },
+    { name = "playwright" },
+    { name = "pydantic" },
+    { name = "python-dotenv" },
+    { name = "pyyaml" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "beautifulsoup4", specifier = ">=4.12,<5" },
+    { name = "httpx", specifier = ">=0.28,<0.29" },
+    { name = "openai", specifier = ">=2.54,<3" },
+    { name = "playwright", specifier = ">=1.50,<2" },
+    { name = "pydantic", specifier = ">=2.12,<3" },
+    { name = "python-dotenv", specifier = ">=1.1,<2" },
+    { name = "pyyaml", specifier = ">=6,<7" },
+]
+
+[[package]]
+name = "advanced-used-car-search-workspace"
+version = "0.1.0"
+source = { virtual = "." }
+dependencies = [
+    { name = "advanced-used-car-search" },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "mypy" },
+    { name = "pip-audit" },
+    { name = "pytest" },
+    { name = "ruff" },
+    { name = "types-pyyaml" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "advanced-used-car-search", directory = "package" },
+    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.18,<2" },
+    { name = "pip-audit", marker = "extra == 'dev'", specifier = ">=2.10,<3" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8,<10" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.13,<1" },
+    { name = "types-pyyaml", marker = "extra == 'dev'", specifier = ">=6,<7" },
+]
+provides-extras = ["dev"]
+
+[[package]]
 name = "annotated-types"
 version = "0.8.0"
 source = { registry = "https://pypi.org/simple" }
@@ -520,59 +573,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/77/7a/1f0b8a35fbd079a4f1752c31a15dc99cf277f863747c459be0af39e900e5/jiter-0.17.0-graalpy312-graalpy250_312_native-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:3e05f5adbf68c4bd11e1610f394034d984152988e84be6f8314235ce6f2139e5", size = 303708, upload-time = "2026-09-12T15:14:11.445Z" },
     { url = "https://files.pythonhosted.org/packages/e1/8b/d76219ebdbcf3d4209d9d21a0810db4c8d0a6f88e3ee87d30bdea4e90d30/jiter-0.17.0-graalpy312-graalpy250_312_native-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:d2c0bf24c72fd0491405dce5d40194f2070e9021ce648c1a1d46234b93d848ff", size = 307147, upload-time = "2026-09-12T15:14:12.897Z" },
 ]
-
-[[package]]
-name = "lexus-hunter"
-version = "0.1.0"
-source = { directory = "package" }
-dependencies = [
-    { name = "beautifulsoup4" },
-    { name = "httpx" },
-    { name = "openai" },
-    { name = "playwright" },
-    { name = "pydantic" },
-    { name = "python-dotenv" },
-    { name = "pyyaml" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "beautifulsoup4", specifier = ">=4.12,<5" },
-    { name = "httpx", specifier = ">=0.28,<0.29" },
-    { name = "openai", specifier = ">=2.54,<3" },
-    { name = "playwright", specifier = ">=1.50,<2" },
-    { name = "pydantic", specifier = ">=2.12,<3" },
-    { name = "python-dotenv", specifier = ">=1.1,<2" },
-    { name = "pyyaml", specifier = ">=6,<7" },
-]
-
-[[package]]
-name = "lexus-hunter-workspace"
-version = "0.1.0"
-source = { virtual = "." }
-dependencies = [
-    { name = "lexus-hunter" },
-]
-
-[package.optional-dependencies]
-dev = [
-    { name = "mypy" },
-    { name = "pip-audit" },
-    { name = "pytest" },
-    { name = "ruff" },
-    { name = "types-pyyaml" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "lexus-hunter", directory = "package" },
-    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.18,<2" },
-    { name = "pip-audit", marker = "extra == 'dev'", specifier = ">=2.10,<3" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8,<10" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.13,<1" },
-    { name = "types-pyyaml", marker = "extra == 'dev'", specifier = ">=6,<7" },
-]
-provides-extras = ["dev"]
 
 [[package]]
 name = "librt"

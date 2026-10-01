@@ -50,11 +50,11 @@ jobs:
 
       - name: Prove installed package freshness
         run: |
-          uv run python -c 'import lexus_hunter.config; print(lexus_hunter.config.__file__); print(lexus_hunter.config.DEFAULTS["max_response_bytes"])'
-          uv run python -c 'from pathlib import Path; import lexus_hunter.config as config; source = (Path.cwd() / "package" / "lexus_hunter" / "config.py").resolve(); installed = Path(config.__file__).resolve(); assert installed != source; assert installed.read_bytes() == source.read_bytes(); assert config.DEFAULTS["max_response_bytes"] == 4000000'
+          uv run python -c 'import advanced_used_car_search.config; print(advanced_used_car_search.config.__file__); print(advanced_used_car_search.config.DEFAULTS["max_response_bytes"])'
+          uv run python -c 'from pathlib import Path; import advanced_used_car_search.config as config; source = (Path.cwd() / "package" / "advanced_used_car_search" / "config.py").resolve(); installed = Path(config.__file__).resolve(); assert installed != source; assert installed.read_bytes() == source.read_bytes(); assert config.DEFAULTS["max_response_bytes"] == 4000000'
 
       - name: Run deterministic fixture scan
-        run: uv run lexus-hunter dry-run
+        run: uv run advanced-used-car-search dry-run
 
       - name: Preserve deterministic fixture reports
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -73,7 +73,7 @@ jobs:
         run: uv run ruff check .
 
       - name: Run mypy
-        run: uv run mypy package/lexus_hunter
+        run: uv run mypy package/advanced_used_car_search
 
       - name: Check setup shell syntax
         run: bash -n setup.sh

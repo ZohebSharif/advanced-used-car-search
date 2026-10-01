@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from lexus_hunter.config import load
-from lexus_hunter.extract import extract, title_evidence_state
-from lexus_hunter.model import ExtractionSuggestion, ModelBudget, ModelCall
-from lexus_hunter.rank import evaluate
+from advanced_used_car_search.config import load
+from advanced_used_car_search.extract import extract, title_evidence_state
+from advanced_used_car_search.model import ExtractionSuggestion, ModelBudget, ModelCall
+from advanced_used_car_search.rank import evaluate
 
 CONFIG = load()
 

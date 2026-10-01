@@ -3,14 +3,14 @@ from __future__ import annotations
 import time
 from datetime import UTC, datetime
 
-import lexus_hunter.sources as source_module
+import advanced_used_car_search.sources as source_module
 import pytest
-from lexus_hunter.config import ROOT, load
-from lexus_hunter.doctor import run_doctor
-from lexus_hunter.extract import extract, privacy
-from lexus_hunter.rank import evaluate, validate_vin, vin_check_digit
-from lexus_hunter.sources import ADAPTERS, Browser, CandidateRejectedError, _lexus_ui_radius
-from lexus_hunter.store import Store
+from advanced_used_car_search.config import ROOT, load
+from advanced_used_car_search.doctor import run_doctor
+from advanced_used_car_search.extract import extract, privacy
+from advanced_used_car_search.rank import evaluate, validate_vin, vin_check_digit
+from advanced_used_car_search.sources import ADAPTERS, Browser, CandidateRejectedError, _lexus_ui_radius
+from advanced_used_car_search.store import Store
 
 CONFIG = load()
 
@@ -71,7 +71,7 @@ def test_vin_validation_does_not_follow_redirects_or_access_blocks(
             calls.append(url)
             return Response()
 
-    monkeypatch.setattr("lexus_hunter.rank.httpx.Client", Client)
+    monkeypatch.setattr("advanced_used_car_search.rank.httpx.Client", Client)
     assert validate_vin("58AEA1C16NU018844", remote=True, year=2022) == expected
     assert options["follow_redirects"] is False
     assert options["trust_env"] is False
@@ -496,7 +496,7 @@ def test_doctor_treats_configured_dealers_as_directly_testable(tmp_path, monkeyp
         def close(self):
             return None
 
-    monkeypatch.setattr("lexus_hunter.doctor.Browser", LaunchableBrowser)
+    monkeypatch.setattr("advanced_used_car_search.doctor.Browser", LaunchableBrowser)
     checks = run_doctor(
         load(
             enabled_sources=["dealers"],

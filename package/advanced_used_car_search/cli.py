@@ -5,10 +5,14 @@ from __future__ import annotations
 import argparse
 import json
 import shutil
+import sqlite3
+import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+from playwright.sync_api import Error as BrowserError
 
 from .config import ROOT, SOURCES, load
 from .doctor import print_checks, run_doctor
@@ -85,15 +89,21 @@ def run(args: argparse.Namespace, *, dry: bool = False, test: bool = False) -> d
         state=getattr(args, "state", None),
         run_duration_minutes=getattr(args, "duration_minutes", None),
     )
-    if dry and bool(getattr(args, "model", False)):
-        config["model_enabled"] = True
+    if dry:
+        config["model_enabled"] = bool(getattr(args, "model", False))
+    fixtures = sorted((ROOT / "fixtures").glob("*.html")) if dry else []
+    if dry and not fixtures:
+        raise ValueError(
+            f"No HTML fixtures found in {ROOT / 'fixtures'}. "
+            "Run from the repository directory, or set ADVANCED_USED_CAR_SEARCH_HOME to it."
+        )
     started, start = now(), time.monotonic()
     duration = (
         0 if dry else (min(config["run_duration_minutes"], 3) if test else config["run_duration_minutes"])
     )
     deadline = start + duration * 60
     database_path = ROOT / (
-        "fixtures.sqlite3" if dry else "diagnostic.sqlite3" if test else "hunter.sqlite3"
+        "fixtures.sqlite3" if dry else "diagnostic.sqlite3" if test else "listings.sqlite3"
     )
     db = Store(database_path)
     run_id = db.start(started)
@@ -161,7 +171,7 @@ def run(args: argparse.Namespace, *, dry: bool = False, test: bool = False) -> d
 
     try:
         if dry:
-            for fixture in sorted((ROOT / "fixtures").glob("*.html")):
+            for fixture in fixtures:
                 ingest(
                     fixture.read_text(encoding="utf-8"),
                     f"https://example.com/vehicle/{fixture.stem}",
@@ -262,6 +272,7 @@ def run(args: argparse.Namespace, *, dry: bool = False, test: bool = False) -> d
         log(logpath, event="finished", summary=summary)
         table(list(current.values()))
         print(f"Report: {report_directory / 'latest.md'} | {report_directory / 'latest.json'}")
+        print(f"View again: advanced-used-car-search report --mode {mode}")
         db.close()
     return report
 
@@ -272,44 +283,86 @@ def CA_LOCATION(value: Any) -> bool:
 
 def parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(
-        prog="lexus-hunter", description="Read-only Lexus ES 300h listing research"
+        prog="advanced-used-car-search",
+        description="Read-only research for California 2022 Lexus ES 300h listings.",
+        epilog=(
+            "Start offline: advanced-used-car-search dry-run\n"
+            "View the demo: advanced-used-car-search report --mode fixture\n"
+            "Live browsing is opt-in and never contacts sellers or submits forms."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    root.add_argument("--config", type=Path, default=ROOT / "config.yaml", help="YAML configuration path")
-    commands = root.add_subparsers(dest="command", required=True)
-    live = commands.add_parser("run")
-    live.add_argument("--headless", action="store_true")
-    live.add_argument("--duration-minutes", type=float)
-    live.add_argument("--zip")
-    live.add_argument("--radius", type=int)
-    live.add_argument("--max-price", type=int)
-    live.add_argument("--state")
-    for command in ("report", "listings", "sources"):
-        commands.add_parser(command)
-    dry = commands.add_parser("dry-run")
-    dry.add_argument("--model", action="store_true", help="use configured bounded model on fixtures")
-    test_sources = commands.add_parser("test-sources")
-    test_sources.add_argument("--duration-minutes", type=float)
-    test_sources.add_argument("--headless", action="store_true")
-    doctor = commands.add_parser("doctor")
-    doctor.add_argument("--check-model", action="store_true", help="make one explicit bounded DeepSeek call")
+    root.add_argument(
+        "--config", type=Path, default=ROOT / "config.yaml",
+        help="YAML configuration path (place before the command; default: %(default)s)",
+    )
+    commands = root.add_subparsers(dest="command", title="commands")
+    live = commands.add_parser("run", help="research live public listings (requires Chromium)")
+    live.add_argument("--headless", action="store_true", help="hide the browser window")
+    live.add_argument("--duration-minutes", type=float, help="maximum runtime; sources may finish earlier")
+    live.add_argument("--zip", help="five-digit California search ZIP")
+    live.add_argument("--radius", type=int, help="search radius in miles")
+    live.add_argument("--max-price", type=int, help="target price in USD; must not exceed stretch_price")
+    live.add_argument("--state", choices=["CA"], help="supported state: CA only")
+    report = commands.add_parser("report", help="read a saved live, fixture, or diagnostic report")
+    report.add_argument(
+        "--mode", choices=["live", "fixture", "diagnostic"], default="live",
+        help="report to read (default: live; use fixture after dry-run)",
+    )
+    report.add_argument("--format", choices=["md", "json"], default="md", help="output format (default: md)")
+    commands.add_parser("listings", help="show stored live inventory, not fixture data")
+    commands.add_parser("sources", help="show source policy and latest live-run status")
+    dry = commands.add_parser("dry-run", help="try bundled examples offline; no browser or API key needed")
+    dry.add_argument(
+        "--model", action="store_true",
+        help="opt in to bounded DeepSeek calls on fixtures (requires an API key; may incur cost)",
+    )
+    test_sources = commands.add_parser(
+        "test-sources", help="diagnose live sources without changing live inventory (at most 3 minutes)"
+    )
+    test_sources.add_argument("--duration-minutes", type=float, help="runtime limit, capped at 3 minutes")
+    test_sources.add_argument("--headless", action="store_true", help="hide the browser window")
+    doctor = commands.add_parser("doctor", help="check configuration, storage, and live-browser readiness")
+    doctor.add_argument(
+        "--check-model", action="store_true",
+        help="opt in to one bounded DeepSeek request (requires model/key; may incur cost)",
+    )
     return root
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = parser().parse_args(argv)
+    command_parser = parser()
+    args = command_parser.parse_args(argv)
+    if args.command is None:
+        command_parser.print_help()
+        return 0
+    try:
+        return dispatch(args)
+    except (ValueError, OSError, sqlite3.Error) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    except BrowserError:
+        print(
+            "Browser could not start or complete the request. Install Chromium with "
+            "`uv run playwright install chromium`, then run "
+            "`advanced-used-car-search doctor`. For an offline demo, use `dry-run`.",
+            file=sys.stderr,
+        )
+        return 1
+    except KeyboardInterrupt:
+        print("\nStopped. Any completed report is in the reports directory.", file=sys.stderr)
+        return 130
+
+
+def dispatch(args: argparse.Namespace) -> int:
     if args.command in {"run", "test-sources", "dry-run"}:
         run(args, dry=args.command == "dry-run", test=args.command == "test-sources")
         return 0
     if args.command == "doctor":
-        try:
-            config = load(args.config)
-        except Exception as exc:
-            print(f"configuration  fail     {type(exc).__name__}: {exc}")
-            return 1
-        return print_checks(run_doctor(config, ROOT, check_model=args.check_model))
+        return print_checks(run_doctor(load(args.config), ROOT, check_model=args.check_model))
     if args.command == "sources":
         config = load(args.config)
-        store = Store(ROOT / "hunter.sqlite3")
+        store = Store(ROOT / "listings.sqlite3")
         latest = store.latest()
         events = store.events(latest["id"]) if latest else []
         for name in SOURCES:
@@ -326,15 +379,31 @@ def main(argv: list[str] | None = None) -> int:
         store.close()
         return 0
     if args.command == "listings":
-        store = Store(ROOT / "hunter.sqlite3")
-        table(store.listings())
+        store = Store(ROOT / "listings.sqlite3")
+        entries = store.listings()
+        if entries:
+            table(entries)
+        else:
+            print(
+                "No live listings saved yet. Start with `advanced-used-car-search dry-run`, "
+                "then `advanced-used-car-search report --mode fixture` for sample results."
+            )
         store.close()
         return 0
-    path = ROOT / "reports" / "latest.md"
-    message = path.read_text(encoding="utf-8") if path.exists() else (
-        "No live report yet. Run `lexus-hunter run` first."
+    directory = ROOT / "reports" / (
+        "fixtures" if args.mode == "fixture" else "diagnostic" if args.mode == "diagnostic" else ""
     )
-    print(message)
+    path = directory / f"latest.{args.format}"
+    if not path.is_file():
+        command = {"live": "run", "fixture": "dry-run", "diagnostic": "test-sources"}[args.mode]
+        print(
+            f"No {args.mode} report at {path}. "
+            f"Create one with `advanced-used-car-search {command}`. "
+            "For an offline demo, use `dry-run` and `report --mode fixture`.",
+            file=sys.stderr,
+        )
+        return 1
+    print(path.read_text(encoding="utf-8"), end="")
     return 0
 
 

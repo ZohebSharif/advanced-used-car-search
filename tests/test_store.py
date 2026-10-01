@@ -4,7 +4,7 @@ import json
 import sqlite3
 from datetime import UTC, datetime, timedelta
 
-from lexus_hunter.store import SCHEMA_VERSION, Store
+from advanced_used_car_search.store import SCHEMA_VERSION, Store
 
 
 def item(source: str = "autotrader", *, observed: str | None = None, price: int = 29_000):

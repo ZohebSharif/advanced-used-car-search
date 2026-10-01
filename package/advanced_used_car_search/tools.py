@@ -78,7 +78,7 @@ class AgentTools:
         with httpx.Client(
             timeout=timeout,
             follow_redirects=False,
-            headers={"User-Agent": "lexus-hunter/0.2"},
+            headers={"User-Agent": "advanced-used-car-search/0.2"},
             trust_env=False,
         ) as client:
             for _ in range(4):

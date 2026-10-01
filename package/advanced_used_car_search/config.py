@@ -10,12 +10,12 @@ from urllib.parse import urlparse
 import yaml
 from dotenv import load_dotenv
 
-_source_root = Path(__file__).resolve().parent.parent
+_source_root = Path(__file__).resolve().parents[2]
 _cwd = Path.cwd().resolve()
 ROOT = (
-    Path(os.environ["LEXUS_HUNTER_HOME"]).expanduser().resolve()
-    if os.getenv("LEXUS_HUNTER_HOME")
-    else next((p for p in (_source_root, _cwd, _cwd / "lexus-hunter") if (p / "config.yaml").exists()), _cwd)
+    Path(os.environ["ADVANCED_USED_CAR_SEARCH_HOME"]).expanduser().resolve()
+    if os.getenv("ADVANCED_USED_CAR_SEARCH_HOME")
+    else next((p for p in (_cwd, _source_root) if (p / "config.yaml").exists()), _cwd)
 )
 load_dotenv(ROOT / ".env", override=False)
 
@@ -78,15 +78,35 @@ def _environment_overrides() -> dict[str, Any]:
 
 
 def load(path: str | Path | None = None, **overrides: Any) -> dict[str, Any]:
-    config_path = Path(path) if path else ROOT / "config.yaml"
-    loaded = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    config_path = Path(path).expanduser() if path else ROOT / "config.yaml"
+    try:
+        loaded = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    except FileNotFoundError as exc:
+        raise ValueError(
+            f"Configuration not found: {config_path}. Run from the repository directory, "
+            "or pass `--config /path/to/config.yaml` before the command."
+        ) from exc
+    except yaml.YAMLError as exc:
+        raise ValueError(
+            f"Invalid YAML in {config_path}. Check indentation and quote five-digit ZIP codes."
+        ) from exc
     if not isinstance(loaded, dict):
-        raise ValueError("Configuration must be a mapping")
+        raise ValueError(f"Configuration in {config_path} must be a YAML mapping")
     config = deepcopy(DEFAULTS)
     config.update(loaded)
     config.update(_environment_overrides())
     config.update({key: value for key, value in overrides.items() if value is not None})
-    _validate(config)
+    try:
+        _validate(config)
+    except KeyError as exc:
+        raise ValueError(
+            f"Missing configuration setting {exc.args[0]!r} in {config_path}; "
+            "use the repository config.yaml as your starting point."
+        ) from exc
+    except TypeError as exc:
+        raise ValueError(
+            f"Invalid setting type in {config_path}; compare values with the repository config.yaml."
+        ) from exc
     return config
 
 
@@ -98,7 +118,7 @@ def _validate(config: dict[str, Any]) -> None:
     ):
         raise ValueError("home_zip must be a five-digit ZIP string")
     if config["target_price"] <= 0 or config["stretch_price"] < config["target_price"]:
-        raise ValueError("Invalid price limits")
+        raise ValueError("target_price must be positive and no higher than stretch_price in config.yaml")
     duration = config["run_duration_minutes"]
     if isinstance(duration, bool) or not isinstance(duration, (int, float)) or duration < 0:
         raise ValueError("Run duration must be a non-negative number")
