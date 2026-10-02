@@ -35,7 +35,7 @@ AMBIGUOUS_TITLE = re.compile(
     re.IGNORECASE,
 )
 PRICE = re.compile(r"\$\s*([\d,]{4,7})(?!\d)")
-MILES = re.compile(r"\b([\d,]{1,7})\s*(?:mi\.?|miles)\b", re.IGNORECASE)
+MILES = re.compile(r"\b([\d,]{1,7})\s*(?:miles|mi)\b(?!\.?\s+away\b)\.?", re.IGNORECASE)
 HARD_FIELDS = {"year", "make", "model", "price", "mileage", "location", "vin", "title_evidence", "history"}
 
 
@@ -183,7 +183,7 @@ def extract(
     )
     match_year = re.search(r"\b(20(?:21|22|23))\b", identity)
     raw_price = _first(offer.get("price"), structured.get("price"), field(r"\$\s*([\d,]{4,7})\b"))
-    raw_miles = _first(structured.get("mileageFromOdometer"), field(r"\b([\d,]{1,7})\s*(?:mi\.?|miles)\b"))
+    raw_miles = _first(structured.get("mileageFromOdometer"), field(MILES.pattern))
     vin = _first(
         structured.get("vehicleIdentificationNumber"), field(r"\bVIN\s*[:#]?\s*([A-HJ-NPR-Z0-9]{17})\b")
     )

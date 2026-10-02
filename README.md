@@ -217,6 +217,8 @@ bash -n setup.sh
 The location fallback separates recognized mileage fields from city text, even
 without punctuation, and stops at sentence boundaries. Structured address evidence
 still takes precedence.
+Mileage extraction excludes distance-to-seller labels such as `22 mi away`; only
+odometer evidence is used for vehicle mileage.
 
 The installed-package checks must print a path under the active environment's
 `site-packages/advanced_used_car_search/`, followed by `4000000`, and prove that the installed `config.py`

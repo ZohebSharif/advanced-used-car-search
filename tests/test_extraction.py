@@ -26,6 +26,28 @@ def test_fixture_location_excludes_adjacent_mileage(filename: str, expected_loca
     assert item["location"] == expected_location
 
 
+@pytest.mark.parametrize(
+    ("text", "expected_mileage"),
+    [
+        ("22 mi away · 13,161 mi", 13161),
+        ("6 mi away · 7,952 mi", 7952),
+        ("98 mi away · 51,589 mi", 51589),
+        ("22 miles away · 13,161 miles", 13161),
+        ("22 mi. away · 13,161 mi.", 13161),
+        ("22 mi away", None),
+    ],
+)
+def test_distance_to_seller_is_not_odometer_mileage(text: str, expected_mileage: int | None) -> None:
+    item = extract(
+        f"<h1>2022 Lexus ES 300h</h1><p>{text}</p>",
+        "https://example.com/vehicle/distance",
+        "fixture",
+        CONFIG,
+        use_model=False,
+    )
+    assert item["mileage"] == expected_mileage
+
+
 def test_title_language_is_context_aware() -> None:
     assert title_evidence_state("This vehicle has a salvage title.")["state"] == "affirmative_adverse"
     assert title_evidence_state("No salvage title. Not rebuilt.")["state"] == "negated_adverse"
