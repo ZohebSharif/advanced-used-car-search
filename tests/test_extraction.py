@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from advanced_used_car_search.config import load
 from advanced_used_car_search.extract import extract, title_evidence_state
 from advanced_used_car_search.model import ExtractionSuggestion, ModelBudget, ModelCall
@@ -10,12 +11,19 @@ from advanced_used_car_search.rank import evaluate
 CONFIG = load()
 
 
-def test_fixture_location_does_not_include_previous_sentence() -> None:
-    fixture = Path(__file__).resolve().parents[1] / "fixtures" / "autotrader_near.html"
+@pytest.mark.parametrize(
+    ("filename", "expected_location"),
+    [
+        ("autotrader_near.html", "Sacramento, CA 95814"),
+        ("cars_wrong.html", "San Diego, CA 92101"),
+    ],
+)
+def test_fixture_location_excludes_adjacent_mileage(filename: str, expected_location: str) -> None:
+    fixture = Path(__file__).resolve().parents[1] / "fixtures" / filename
     item = extract(
         fixture.read_text(), "https://example.com/vehicle/near", "fixture", CONFIG, use_model=False
     )
-    assert item["location"] == "Sacramento, CA 95814"
+    assert item["location"] == expected_location
 
 
 def test_title_language_is_context_aware() -> None:

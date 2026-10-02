@@ -149,6 +149,15 @@ def extract(
     location = ", ".join(
         str(address[key]) for key in ("addressLocality", "addressRegion", "postalCode") if address.get(key)
     )
+    parsed_location = location
+    if not parsed_location:
+        # Mileage is a separate field even when the page omits sentence punctuation.
+        location_match = re.search(
+            r"\b([A-Za-z '-]{2,45},\s*CA(?:\s*\d{5})?)\b",
+            MILES.sub("\n", text),
+            re.IGNORECASE,
+        )
+        parsed_location = location_match.group(1).strip() if location_match else ""
     title = soup.title.get_text(" ", strip=True) if soup.title else ""
     heading = soup.h1.get_text(" ", strip=True) if soup.h1 else ""
     identity = " ".join(
@@ -195,7 +204,7 @@ def extract(
         "trim": structured.get("vehicleConfiguration"),
         "price": _int(raw_price),
         "fees": _int(field(r"\b(?:dealer|documentation|doc) fees?\s*[:\-]?\s*\$([\d,]+)")),
-        "location": privacy(_first(location, field(r"\b([A-Za-z '-]{2,45},\s*CA(?:\s*\d{5})?)\b")) or ""),
+        "location": privacy(parsed_location),
         "mileage": _int(raw_miles),
         "exterior": _first(structured.get("color"), structured.get("vehicleColor"), exterior),
         "interior": _first(structured.get("vehicleInteriorColor"), interior),

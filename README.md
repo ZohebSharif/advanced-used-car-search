@@ -214,8 +214,9 @@ uv run mypy package/advanced_used_car_search
 bash -n setup.sh
 ```
 
-The offline demo's location fallback stops at sentence boundaries, so preceding
-mileage text is not included in the city shown in reports.
+The location fallback separates recognized mileage fields from city text, even
+without punctuation, and stops at sentence boundaries. Structured address evidence
+still takes precedence.
 
 The installed-package checks must print a path under the active environment's
 `site-packages/advanced_used_car_search/`, followed by `4000000`, and prove that the installed `config.py`
